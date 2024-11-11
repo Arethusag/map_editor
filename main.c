@@ -2,14 +2,35 @@
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+// Definitions
 #define TILE_SIZE 32
+#define GRID_SIZE 256
 
+// Variables
+char command[256] = {0};
+int commandIndex = 0;
+bool inCommandMode = false;
+int activeTileKey = 0;
+int grid[GRID_SIZE][GRID_SIZE] = {0};
+
+// Structs
 typedef struct Tile {
-    int tile_key;
+    int tileKey;
     int walkable;
     Color color;
 } Tile;
+
+// Functions
+void parseCommand() {
+    if (strncmp(command, ";TILE ", 6) == 0) {
+        activeTileKey = atoi(command + 6);
+        printf("Active tile set to %d\n", activeTileKey);
+    } else {
+        printf("Command not recognized\n");
+    }
+}
 
 int main() {
     // Database Initialization
@@ -38,77 +59,121 @@ int main() {
     sqlite3_stmt* tileStmt;
     if (sqlite3_prepare_v2(db, tileQuery, -1, &tileStmt, NULL) == SQLITE_OK) {
         while (sqlite3_step(tileStmt) == SQLITE_ROW) {
-            int tile_key = sqlite3_column_int(tileStmt, 0);
+            int tileKey = sqlite3_column_int(tileStmt, 0);
             int walkable = sqlite3_column_int(tileStmt, 1);
             const unsigned int colorHex = sqlite3_column_int(tileStmt, 2);
             Color color = GetColor(colorHex);
             /* printf("Tile Key: %d\n", tile_key); */
-            tileTypes[tile_key] = (Tile){ tile_key, walkable, color };
+            tileTypes[tileKey] = (Tile){ tileKey, walkable, color };
         }
     }
     sqlite3_finalize(tileStmt);
 
     // Get map dimensions
-    const char* dimsQuery = "SELECT COUNT(DISTINCT x), COUNT(DISTINCT y) FROM map;";
+    const char* dimsQuery = "SELECT MAX(x), MAX(y), MIN(x), MIN(y) FROM map;";
     sqlite3_stmt* dimsStmt;
-    int dims_x;
-    int dims_y;
+    int maxX;
+    int maxY;
+    int minX;
+    int minY;
     if (sqlite3_prepare_v2(db, dimsQuery, -1, &dimsStmt, NULL) == SQLITE_OK) {
         if (sqlite3_step(dimsStmt) == SQLITE_ROW) {
-            dims_x = sqlite3_column_int(dimsStmt, 0);
-            dims_y = sqlite3_column_int(dimsStmt, 1);
+            maxX = sqlite3_column_int(dimsStmt, 0);
+            maxY = sqlite3_column_int(dimsStmt, 1);
+            minX = sqlite3_column_int(dimsStmt, 2);
+            minY = sqlite3_column_int(dimsStmt, 3);
         }
     }
     sqlite3_finalize(dimsStmt);
-    printf("Distinct number of x-coordinates: %d\n", dims_x);
-    printf("Distinct number of y-coordinates: %d\n", dims_y);
+    printf("Range x-coordinate: (%d,%d)\n", minX, maxX);
+    printf("Range y-coordinates: (%d,%d)\n", minY, maxY);
 
     // Create map grid
-    int grid[dims_x][dims_y];
     const char* mapQuery = "SELECT x, y, tile_key FROM map;";
     sqlite3_stmt* mapStmt;
     if (sqlite3_prepare_v2(db, mapQuery, -1, &mapStmt, NULL) == SQLITE_OK) {
         while (sqlite3_step(mapStmt) == SQLITE_ROW) {
             int x = sqlite3_column_int(mapStmt, 0);
             int y = sqlite3_column_int(mapStmt, 1);
-            int tile_key = sqlite3_column_int(mapStmt, 2);
-            /* printf("Grid coord(%d,%d) assigned tile type %d\n", x, y, tile_key); */
-            grid[x][y] = tile_key;
+            int tileKey = sqlite3_column_int(mapStmt, 2);
+            grid[x][y] = tileKey;
         }
     }
     sqlite3_finalize(mapStmt);
-
     sqlite3_close(db);
 
     // Window Initialization
-    const int screen_width = 800;
-    const int screen_height = 600;
-    InitWindow(screen_width, screen_height, "Map Editor");
+    const int screenWidth = 800;
+    const int screenHeight = 600;
+    InitWindow(screenWidth, screenHeight, "Map Editor");
     SetTargetFPS(60);
+
     while (!WindowShouldClose()) {
-        int mouse_x = GetMouseX()/32;
-        int mouse_y = GetMouseY()/32;
-        /* printf("Mouse Pos(%d,%d)\n", mouse_x/32, mouse_y/32); */
 
         // Initialize render loop
         BeginDrawing();
-        ClearBackground(BLACK);
+        ClearBackground(WHITE);
         
         // Draw grid
-        for (int x = 0; x < dims_x; x++) {
-            for (int y = 0; y < dims_y; y++) {
-                /* printf("Drawing tile(%d,%d)\n", x, y); */
-                int tile_key = grid[x][y]; 
-                /* printf("Tile Key: %d\n", tile_key); */
-                Color color = tileTypes[tile_key].color;
-                DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, color); 
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                if (grid[x][y] != 0) {
+                    int tileKey = grid[x][y]; 
+                    Color tileColor = tileTypes[tileKey].color;
+                    DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, tileColor); 
+                }
             }
         }
 
-        // Red highlight on mouse square
-        DrawRectangleLines(mouse_x * TILE_SIZE, mouse_y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
+        // Active tile
+        int mouseX = GetMouseX()/32;
+        int mouseY = GetMouseY()/32;
+        Color activeColor = tileTypes[activeTileKey].color;
+        DrawRectangle(mouseX * TILE_SIZE, mouseY * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
+        DrawRectangleLines(mouseX * TILE_SIZE, mouseY * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
 
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            if (mouseX >= 0 && mouseY >= 0 && mouseX < GRID_SIZE && mouseY < GRID_SIZE) {
+                if (mouseX > maxX) {
+                    maxX = mouseX;
+                } else if (mouseX < minX) {
+                    minX = mouseX;
+                } else if (mouseY > maxY) {
+                    maxY = mouseY;
+                } else if (mouseY < minY) {
+                    minY = mouseY;
+                }
+                grid[mouseX][mouseY] = activeTileKey;
+            }
+        }
 
+        // Command mode
+        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+            if (IsKeyPressed(KEY_SEMICOLON)) {
+                printf("Entering command mode\n");
+                inCommandMode = true;
+                commandIndex = 0;
+                memset(command, 0, sizeof(command));
+            }
+        }
+
+        // Command processing
+        if (inCommandMode) {
+            int key = GetKeyPressed();
+            if (key >= 32 && key <= 126 && commandIndex < sizeof(command) -1) {
+                command[commandIndex++] = (char)key;
+            } else if (key == KEY_BACKSPACE && commandIndex > 0) {
+                command[--commandIndex] ='\0';
+            } else if (key == KEY_ENTER) {
+                printf("Command entered: %s\n", command);
+                parseCommand();
+                inCommandMode = false;
+            } else if (key == KEY_ESCAPE) {
+                inCommandMode = false;
+            }
+            DrawRectangle(0, screenHeight - 30, screenWidth, 30, DARKGRAY);
+            DrawText(command, 10, screenHeight -25, 20, LIGHTGRAY);
+        }
         EndDrawing();
     }
     CloseWindow();

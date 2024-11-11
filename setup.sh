@@ -9,18 +9,13 @@ CREATE TABLE IF NOT EXISTS map(
     tile_key INTEGER NOT NULL);
 END_SQL
 
-for x in $(seq 0 10); do
-    for y in $(seq 0 14); do
-        sqlite3 test.db "INSERT INTO map (x, y, tile_key) VALUES ($x, $y, 0);"
-    done
-done
-
 # Update some map tiles to different tile types
 sqlite3 test.db <<'END_SQL'
-UPDATE map SET tile_key = 1 WHERE x = 5 AND y = 8;
-UPDATE map SET tile_key = 2 WHERE x = 6 AND y = 9;
-UPDATE map SET tile_key = 3 WHERE x = 7 AND y = 10;
-UPDATE map SET tile_key = 4 WHERE x = 8 AND y = 11;
+INSERT INTO map (x, y, tile_key) VALUES (10,10,0);
+INSERT INTO map (x, y, tile_key) VALUES (10,11,1);
+INSERT INTO map (x, y, tile_key) VALUES (10,12,2);
+INSERT INTO map (x, y, tile_key) VALUES (10,13,3);
+INSERT INTO map (x, y, tile_key) VALUES (10,14,4);
 END_SQL
 
 sqlite3 test.db "SELECT COUNT(*) FROM map;"
