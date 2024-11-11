@@ -8,13 +8,6 @@
 #define TILE_SIZE 32
 #define GRID_SIZE 256
 
-// Variables
-char command[256] = {0};
-int commandIndex = 0;
-bool inCommandMode = false;
-int activeTileKey = 0;
-int grid[GRID_SIZE][GRID_SIZE] = {0};
-
 // Structs
 typedef struct Tile {
     int tileKey;
@@ -22,11 +15,30 @@ typedef struct Tile {
     Color color;
 } Tile;
 
+// Variables
+char command[256] = {0};
+unsigned int commandIndex = 0;
+bool inCommandMode = false;
+int activeTileKey = 0;
+int grid[GRID_SIZE][GRID_SIZE] = {0};
+int maxTileKey;
+
 // Functions
-void parseCommand() {
+void parseCommand(Tile tileTypes[]) {
     if (strncmp(command, ";TILE ", 6) == 0) {
-        activeTileKey = atoi(command + 6);
-        printf("Active tile set to %d\n", activeTileKey);
+        char *tileKeyStr = command +6;
+        char *endptr;
+        long tileKey = strtol(tileKeyStr, &endptr, 10);
+        if (*endptr == '\0') {
+            if (tileKey >= 0 && tileKey <= maxTileKey && tileTypes[tileKey].tileKey == tileKey) {
+                activeTileKey = (int)tileKey;
+                printf("Active tile set to %d\n", activeTileKey);
+            } else {
+                printf("Tile key out of range\n");
+            }
+        } else {
+            printf("Invalid tile key\n");
+        }
     } else {
         printf("Command not recognized\n");
     }
@@ -42,19 +54,18 @@ int main() {
     };
 
     // Get number of tile types
-    const char* countQuery = "SELECT COUNT(*) FROM tile;";
+    const char* countQuery = "SELECT MAX(tile_key) +1 FROM tile;";
     sqlite3_stmt* countStmt;
-    int count;
     if (sqlite3_prepare_v2(db, countQuery, -1, &countStmt, NULL) == SQLITE_OK) {
         if (sqlite3_step(countStmt) == SQLITE_ROW) {
-            count = sqlite3_column_int(countStmt, 0);
+            maxTileKey = sqlite3_column_int(countStmt, 0);
         }
     }
     sqlite3_finalize(countStmt);
-    printf("Number of tile types to be loaded: %d\n", count);
+    printf("Number of tile types to be loaded: %d\n", maxTileKey);
 
     // Load tile types from database
-    Tile tileTypes[count];
+    Tile tileTypes[maxTileKey];
     const char* tileQuery = "SELECT tile_key, walkable, color FROM tile;";
     sqlite3_stmt* tileStmt;
     if (sqlite3_prepare_v2(db, tileQuery, -1, &tileStmt, NULL) == SQLITE_OK) {
@@ -63,7 +74,6 @@ int main() {
             int walkable = sqlite3_column_int(tileStmt, 1);
             const unsigned int colorHex = sqlite3_column_int(tileStmt, 2);
             Color color = GetColor(colorHex);
-            /* printf("Tile Key: %d\n", tile_key); */
             tileTypes[tileKey] = (Tile){ tileKey, walkable, color };
         }
     }
@@ -112,18 +122,7 @@ int main() {
 
         // Initialize render loop
         BeginDrawing();
-        ClearBackground(WHITE);
-        
-        // Draw grid
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                if (grid[x][y] != 0) {
-                    int tileKey = grid[x][y]; 
-                    Color tileColor = tileTypes[tileKey].color;
-                    DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, tileColor); 
-                }
-            }
-        }
+        ClearBackground(RAYWHITE);
 
         // Active tile
         int mouseX = GetMouseX()/32;
@@ -144,6 +143,7 @@ int main() {
                     minY = mouseY;
                 }
                 grid[mouseX][mouseY] = activeTileKey;
+                printf("Coordinate (%d,%d) assigned tile key: %d\n", mouseX, mouseY, activeTileKey);
             }
         }
 
@@ -166,13 +166,24 @@ int main() {
                 command[--commandIndex] ='\0';
             } else if (key == KEY_ENTER) {
                 printf("Command entered: %s\n", command);
-                parseCommand();
+                parseCommand(tileTypes);
                 inCommandMode = false;
             } else if (key == KEY_ESCAPE) {
                 inCommandMode = false;
             }
             DrawRectangle(0, screenHeight - 30, screenWidth, 30, DARKGRAY);
-            DrawText(command, 10, screenHeight -25, 20, LIGHTGRAY);
+            DrawText(command, 10, screenHeight -25, 20, RAYWHITE);
+        }
+        
+        // Draw grid
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                if (grid[x][y] != 0) {
+                    int tileKey = grid[x][y]; 
+                    Color tileColor = tileTypes[tileKey].color;
+                    DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, tileColor); 
+                }
+            }
         }
         EndDrawing();
     }

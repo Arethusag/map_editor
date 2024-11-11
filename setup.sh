@@ -35,7 +35,6 @@ INSERT INTO tile (tile_key, walkable, description, color)
            (1, 1, 'Green grass tile', 0x00FF00FF),
            (2, 1, 'Brown path tile', 0x8B4513FF),
            (3, 0, 'Grey rock tile', 0x808080FF),
-           (4, 0, 'Blue water tile', 0x0000FFFF); 
+           (4, 0, 'Blue water tile', 0x5033FFFF); 
 
-SELECT COUNT(*) FROM tile;
 END_SQL
