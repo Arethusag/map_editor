@@ -7,13 +7,14 @@ loaded into a C program and rendered in a grid of tiles with size 32x32 pixels.
 
 ## Commands
 
-command prefix is `SHIFT + ;`
+command prefix is `:`
 
-1: TILE <tileKey>: selects active tile for placement.
+1: tile <key>: selects active tile for placement.
+2: save <name>: saves current map.
+2: load <name>: loads saved map.
 
 ## Roadmap
 
-- Core: saving and loading of map databases.
 - Core: click and drag tile placement.
 - Core: map scrolling and panning.
 

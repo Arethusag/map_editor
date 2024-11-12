@@ -15,17 +15,150 @@ typedef struct Tile {
     Color color;
 } Tile;
 
+typedef struct Map {
+    const char *name;
+    int grid[GRID_SIZE][GRID_SIZE];
+    int maxX;
+    int maxY;
+    int minX;
+    int minY;
+} Map;
+
 // Variables
 char command[256] = {0};
 unsigned int commandIndex = 0;
 bool inCommandMode = false;
 int activeTileKey = 0;
-int grid[GRID_SIZE][GRID_SIZE] = {0};
 int maxTileKey;
+Map currentMap;
+sqlite3 *db;
 
 // Functions
-void parseCommand(Tile tileTypes[]) {
-    if (strncmp(command, ";TILE ", 6) == 0) {
+void loadMap(sqlite3 *db, const char *table) {
+
+    // Database Initialization
+    if (sqlite3_open("test.db", &db) == SQLITE_OK) {
+        printf("Database opened successfully.\n");
+    } else {
+        printf("Error opening database: %s\n", sqlite3_errmsg(db));
+    };
+
+    //Buffers to hold queries
+    char dimsQuery[256];
+    char mapQuery[256];
+
+    // Format Queries
+    snprintf(dimsQuery, sizeof(dimsQuery), "SELECT MAX(x), MAX(y), MIN(x), MIN(y) FROM %s;", table);
+    snprintf(mapQuery, sizeof(mapQuery), "SELECT x, y, tile_key FROM %s;", table);
+
+    sqlite3_stmt* dimsStmt;
+    sqlite3_stmt* mapStmt;
+    
+    if (sqlite3_prepare_v2(db, dimsQuery, -1, &dimsStmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(dimsStmt) == SQLITE_ROW) {
+            currentMap.maxX = sqlite3_column_int(dimsStmt, 0);
+            currentMap.maxY = sqlite3_column_int(dimsStmt, 1);
+            currentMap.minX = sqlite3_column_int(dimsStmt, 2);
+            currentMap.minY = sqlite3_column_int(dimsStmt, 3);
+            printf("Range x-coordinate: (%d,%d)\n", currentMap.minX, currentMap.maxX);
+            printf("Range y-coordinates: (%d,%d)\n", currentMap.minY, currentMap.maxY);
+        }
+    } else {
+        printf("Error preparing SQL query: %s\n", sqlite3_errmsg(db));
+        return;
+    }
+    sqlite3_finalize(dimsStmt);
+
+    // Create map grid
+    if (sqlite3_prepare_v2(db, mapQuery, -1, &mapStmt, NULL) == SQLITE_OK) {
+        memset(currentMap.grid, 0, sizeof(currentMap.grid));
+        while (sqlite3_step(mapStmt) == SQLITE_ROW) {
+            int x = sqlite3_column_int(mapStmt, 0);
+            int y = sqlite3_column_int(mapStmt, 1);
+            int tileKey = sqlite3_column_int(mapStmt, 2);
+
+            if (x >= 0 && y >=0 && x < GRID_SIZE && y < GRID_SIZE) {
+                currentMap.grid[x][y] = tileKey;
+            } else {
+                printf("Warning: x or y out of bounds (%d,%d)\n", x, y);
+                return;
+            }    
+        }
+    } else {
+        fprintf(stderr, "Error preparing SQL query: %s\n", sqlite3_errmsg(db));
+    }
+    sqlite3_finalize(mapStmt);
+    sqlite3_close(db);
+    currentMap.name = table;
+}
+
+void saveMap(sqlite3 *db, char *table) {
+    
+    // Database Initialization
+    if (sqlite3_open("test.db", &db) == SQLITE_OK) {
+        printf("Database opened successfully.\n");
+    } else {
+        printf("Error opening database: %s\n", sqlite3_errmsg(db));
+    };
+
+    //Buffer to hold query
+    char dropQuery[256];
+    char createQuery[256];
+    char insertQuery[256];
+
+    sqlite3_stmt* dropStmt;
+    sqlite3_stmt* createStmt;
+    sqlite3_stmt* insertStmt;
+    
+    snprintf(dropQuery, sizeof(dropQuery), "DROP TABLE IF EXISTS %s;", table);
+    snprintf(createQuery, sizeof(createQuery),
+            "CREATE TABLE IF NOT EXISTS %s("
+            "x INTEGER NOT NULL,"
+            "y INTEGER NOT NULL,"
+            "tile_key INTEGER NOT NULL);", table);
+    snprintf(insertQuery, sizeof(insertQuery),
+            "INSERT INTO %s (x, y, tile_key) VALUES (?, ?, ?);", table);
+
+    // Execute DROP TABLE
+    if (sqlite3_prepare_v2(db, dropQuery, -1, &dropStmt, NULL) == SQLITE_OK) {
+        sqlite3_step(dropStmt);
+        sqlite3_finalize(dropStmt);
+    } else {
+        return;
+    }
+
+    // Execute CREATE TABLE
+    if (sqlite3_prepare_v2(db, createQuery, -1, &createStmt, NULL) == SQLITE_OK) {
+        sqlite3_step(createStmt);
+        sqlite3_finalize(createStmt);
+    } else {
+        return;
+    }
+
+    // Insert map grid
+    if (sqlite3_prepare_v2(db, insertQuery, -1, &insertStmt, NULL) == SQLITE_OK) {
+        for (int x = currentMap.minX; x <= currentMap.maxX; x++) {
+            for (int y = currentMap.minY; y <= currentMap.maxY; y++) {
+                if (currentMap.grid[x][y] != 0) {
+                    int tileKey = currentMap.grid[x][y]; 
+                    sqlite3_bind_int(insertStmt, 1, x);         // Bind x
+                    sqlite3_bind_int(insertStmt, 2, y);         // Bind y
+                    sqlite3_bind_int(insertStmt, 3, tileKey);   // Bind tile_key
+                    sqlite3_step(insertStmt);
+                    sqlite3_reset(insertStmt); 
+                    sqlite3_clear_bindings(insertStmt);
+                }
+            }
+        }
+    } else {
+        return;
+    }
+    sqlite3_finalize(insertStmt);
+    sqlite3_close(db);
+} 
+
+void parseCommand(Tile tileTypes[], sqlite3 *db) {
+    if (strncmp(command, ":tile ", 6) == 0) {
         char *tileKeyStr = command +6;
         char *endptr;
         long tileKey = strtol(tileKeyStr, &endptr, 10);
@@ -39,6 +172,14 @@ void parseCommand(Tile tileTypes[]) {
         } else {
             printf("Invalid tile key\n");
         }
+    } else if (strncmp(command, ":load ", 6) == 0) {
+        char *table = &command[6];
+        loadMap(db, table);
+        printf("Map loaded: %s\n", table);
+    } else if (strncmp(command, ":save ", 6) == 0) {
+        char *table = &command[6];
+        saveMap(db, table);
+        printf("Map saved: %s\n", table);
     } else {
         printf("Command not recognized\n");
     }
@@ -46,12 +187,12 @@ void parseCommand(Tile tileTypes[]) {
 
 int main() {
     // Database Initialization
-    sqlite3 *db;
     if (sqlite3_open("test.db", &db) == SQLITE_OK) {
         printf("Database opened successfully.\n");
     } else {
         printf("Error opening database: %s\n", sqlite3_errmsg(db));
     };
+    loadMap(db, "map");
 
     // Get number of tile types
     const char* countQuery = "SELECT MAX(tile_key) +1 FROM tile;";
@@ -79,39 +220,6 @@ int main() {
     }
     sqlite3_finalize(tileStmt);
 
-    // Get map dimensions
-    const char* dimsQuery = "SELECT MAX(x), MAX(y), MIN(x), MIN(y) FROM map;";
-    sqlite3_stmt* dimsStmt;
-    int maxX;
-    int maxY;
-    int minX;
-    int minY;
-    if (sqlite3_prepare_v2(db, dimsQuery, -1, &dimsStmt, NULL) == SQLITE_OK) {
-        if (sqlite3_step(dimsStmt) == SQLITE_ROW) {
-            maxX = sqlite3_column_int(dimsStmt, 0);
-            maxY = sqlite3_column_int(dimsStmt, 1);
-            minX = sqlite3_column_int(dimsStmt, 2);
-            minY = sqlite3_column_int(dimsStmt, 3);
-        }
-    }
-    sqlite3_finalize(dimsStmt);
-    printf("Range x-coordinate: (%d,%d)\n", minX, maxX);
-    printf("Range y-coordinates: (%d,%d)\n", minY, maxY);
-
-    // Create map grid
-    const char* mapQuery = "SELECT x, y, tile_key FROM map;";
-    sqlite3_stmt* mapStmt;
-    if (sqlite3_prepare_v2(db, mapQuery, -1, &mapStmt, NULL) == SQLITE_OK) {
-        while (sqlite3_step(mapStmt) == SQLITE_ROW) {
-            int x = sqlite3_column_int(mapStmt, 0);
-            int y = sqlite3_column_int(mapStmt, 1);
-            int tileKey = sqlite3_column_int(mapStmt, 2);
-            grid[x][y] = tileKey;
-        }
-    }
-    sqlite3_finalize(mapStmt);
-    sqlite3_close(db);
-
     // Window Initialization
     const int screenWidth = 800;
     const int screenHeight = 600;
@@ -133,16 +241,19 @@ int main() {
 
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             if (mouseX >= 0 && mouseY >= 0 && mouseX < GRID_SIZE && mouseY < GRID_SIZE) {
-                if (mouseX > maxX) {
-                    maxX = mouseX;
-                } else if (mouseX < minX) {
-                    minX = mouseX;
-                } else if (mouseY > maxY) {
-                    maxY = mouseY;
-                } else if (mouseY < minY) {
-                    minY = mouseY;
+                if (mouseX > currentMap.maxX) {
+                    currentMap.maxX = mouseX;
                 }
-                grid[mouseX][mouseY] = activeTileKey;
+                if (mouseX < currentMap.minX) {
+                    currentMap.minX = mouseX;
+                }
+                if (mouseY > currentMap.maxY) {
+                    currentMap.maxY = mouseY;
+                }
+                if (mouseY < currentMap.minY) {
+                    currentMap.minY = mouseY;
+                }
+                currentMap.grid[mouseX][mouseY] = activeTileKey;
                 printf("Coordinate (%d,%d) assigned tile key: %d\n", mouseX, mouseY, activeTileKey);
             }
         }
@@ -159,16 +270,16 @@ int main() {
 
         // Command processing
         if (inCommandMode) {
-            int key = GetKeyPressed();
+            int key = GetCharPressed();
             if (key >= 32 && key <= 126 && commandIndex < sizeof(command) -1) {
                 command[commandIndex++] = (char)key;
-            } else if (key == KEY_BACKSPACE && commandIndex > 0) {
+            } else if (IsKeyPressed(KEY_BACKSPACE) && commandIndex > 0) {
                 command[--commandIndex] ='\0';
-            } else if (key == KEY_ENTER) {
+            } else if (IsKeyPressed(KEY_ENTER)) {
                 printf("Command entered: %s\n", command);
-                parseCommand(tileTypes);
+                parseCommand(tileTypes, db);
                 inCommandMode = false;
-            } else if (key == KEY_ESCAPE) {
+            } else if (IsKeyPressed(KEY_ESCAPE)) {
                 inCommandMode = false;
             }
             DrawRectangle(0, screenHeight - 30, screenWidth, 30, DARKGRAY);
@@ -176,10 +287,10 @@ int main() {
         }
         
         // Draw grid
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
-                if (grid[x][y] != 0) {
-                    int tileKey = grid[x][y]; 
+        for (int x = currentMap.minX; x <= currentMap.maxX; x++) {
+            for (int y = currentMap.minY; y <= currentMap.maxY; y++) {
+                if (currentMap.grid[x][y] != 0) {
+                    int tileKey = currentMap.grid[x][y]; 
                     Color tileColor = tileTypes[tileKey].color;
                     DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, tileColor); 
                 }
