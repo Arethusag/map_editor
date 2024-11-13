@@ -7,6 +7,7 @@
 // Definitions
 #define TILE_SIZE 32
 #define GRID_SIZE 256
+#define CAMERA_SPEED 300.0f
 
 // Structs
 typedef struct Tile {
@@ -18,11 +19,19 @@ typedef struct Tile {
 typedef struct Map {
     const char *name;
     int grid[GRID_SIZE][GRID_SIZE];
-    int maxX;
-    int maxY;
-    int minX;
-    int minY;
 } Map;
+
+typedef struct WorldCoords {
+    int startX;
+    int startY;
+    int endX;
+    int endY;
+} WorldCoords;
+
+typedef struct CameraState {
+    bool isPanning;
+    Vector2 lastMousePosition;
+} CameraState;
 
 // Variables
 char command[256] = {0};
@@ -32,6 +41,7 @@ int activeTileKey = 0;
 int maxTileKey;
 Map currentMap;
 sqlite3 *db;
+Camera2D camera = {0};
 
 // Functions
 void loadMap(sqlite3 *db, const char *table) {
@@ -44,30 +54,11 @@ void loadMap(sqlite3 *db, const char *table) {
     };
 
     //Buffers to hold queries
-    char dimsQuery[256];
     char mapQuery[256];
 
-    // Format Queries
-    snprintf(dimsQuery, sizeof(dimsQuery), "SELECT MAX(x), MAX(y), MIN(x), MIN(y) FROM %s;", table);
+    // Format Map Query
     snprintf(mapQuery, sizeof(mapQuery), "SELECT x, y, tile_key FROM %s;", table);
-
-    sqlite3_stmt* dimsStmt;
     sqlite3_stmt* mapStmt;
-    
-    if (sqlite3_prepare_v2(db, dimsQuery, -1, &dimsStmt, NULL) == SQLITE_OK) {
-        if (sqlite3_step(dimsStmt) == SQLITE_ROW) {
-            currentMap.maxX = sqlite3_column_int(dimsStmt, 0);
-            currentMap.maxY = sqlite3_column_int(dimsStmt, 1);
-            currentMap.minX = sqlite3_column_int(dimsStmt, 2);
-            currentMap.minY = sqlite3_column_int(dimsStmt, 3);
-            printf("Range x-coordinate: (%d,%d)\n", currentMap.minX, currentMap.maxX);
-            printf("Range y-coordinates: (%d,%d)\n", currentMap.minY, currentMap.maxY);
-        }
-    } else {
-        printf("Error preparing SQL query: %s\n", sqlite3_errmsg(db));
-        return;
-    }
-    sqlite3_finalize(dimsStmt);
 
     // Create map grid
     if (sqlite3_prepare_v2(db, mapQuery, -1, &mapStmt, NULL) == SQLITE_OK) {
@@ -76,16 +67,10 @@ void loadMap(sqlite3 *db, const char *table) {
             int x = sqlite3_column_int(mapStmt, 0);
             int y = sqlite3_column_int(mapStmt, 1);
             int tileKey = sqlite3_column_int(mapStmt, 2);
-
-            if (x >= 0 && y >=0 && x < GRID_SIZE && y < GRID_SIZE) {
-                currentMap.grid[x][y] = tileKey;
-            } else {
-                printf("Warning: x or y out of bounds (%d,%d)\n", x, y);
-                return;
-            }    
+            currentMap.grid[x][y] = tileKey;
         }
     } else {
-        fprintf(stderr, "Error preparing SQL query: %s\n", sqlite3_errmsg(db));
+        printf("Error preparing SQL query: %s\n", sqlite3_errmsg(db));
     }
     sqlite3_finalize(mapStmt);
     sqlite3_close(db);
@@ -137,8 +122,8 @@ void saveMap(sqlite3 *db, char *table) {
 
     // Insert map grid
     if (sqlite3_prepare_v2(db, insertQuery, -1, &insertStmt, NULL) == SQLITE_OK) {
-        for (int x = currentMap.minX; x <= currentMap.maxX; x++) {
-            for (int y = currentMap.minY; y <= currentMap.maxY; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+            for (int y = 0; y < GRID_SIZE; y++) {
                 if (currentMap.grid[x][y] != 0) {
                     int tileKey = currentMap.grid[x][y]; 
                     sqlite3_bind_int(insertStmt, 1, x);         // Bind x
@@ -157,6 +142,7 @@ void saveMap(sqlite3 *db, char *table) {
     sqlite3_close(db);
 } 
 
+// Parse command input
 void parseCommand(Tile tileTypes[], sqlite3 *db) {
     if (strncmp(command, ":tile ", 6) == 0) {
         char *tileKeyStr = command +6;
@@ -183,6 +169,162 @@ void parseCommand(Tile tileTypes[], sqlite3 *db) {
     } else {
         printf("Command not recognized\n");
     }
+}
+
+void clampCoordinate(int *coord, int min, int max) {
+    if (*coord > max) *coord = max;
+    else if (*coord < min) *coord = 0;
+    else return;
+}
+
+Vector2 GetWorldCoordinates(Vector2 screenPos, Camera2D camera) {
+    Vector2 worldPos;
+    worldPos.x = (screenPos.x - camera.offset.x) / camera.zoom + camera.target.x;
+    worldPos.y = (screenPos.y - camera.offset.y) / camera.zoom + camera.target.y;
+    return worldPos;
+}
+
+WorldCoords GetVisibleGridBounds(Camera2D camera, int screenWidth, int screenHeight) {
+    WorldCoords bounds;
+
+    // Get the bounds of the visible area in world coordinates
+    Vector2 startPos = {0, 0};
+    Vector2 endPos = {screenWidth, screenHeight};
+    Vector2 topLeft = GetWorldCoordinates(startPos, camera);
+    Vector2 bottomRight = GetWorldCoordinates(endPos, camera);
+    
+    // Convert to grid coordinates and add a 1-tile buffer for smooth scrolling
+    bounds.startX = (int)(topLeft.x / TILE_SIZE) - 1;
+    bounds.startY = (int)(topLeft.y / TILE_SIZE) - 1;
+    bounds.endX = (int)(bottomRight.x / TILE_SIZE) + 1;
+    bounds.endY = (int)(bottomRight.y / TILE_SIZE) + 1;
+    
+    // Clamp to grid boundaries
+    clampCoordinate(&bounds.startX, 0, GRID_SIZE - 1);
+    clampCoordinate(&bounds.startY, 0, GRID_SIZE - 1);
+    clampCoordinate(&bounds.endX, 0, GRID_SIZE - 1);
+    clampCoordinate(&bounds.endY, 0, GRID_SIZE - 1);
+
+    return bounds;
+}
+
+WorldCoords GetWorldGridCoords(Vector2 startPos, Vector2 endPos, Camera2D camera) {
+    WorldCoords coords;
+    
+    // Convert start and end positions to world coordinates
+    Vector2 worldStartPos = GetWorldCoordinates(startPos, camera);
+    Vector2 worldEndPos = GetWorldCoordinates(endPos, camera);
+    
+    // Convert to grid coordinates
+    coords.startX = (int)(worldStartPos.x / TILE_SIZE);
+    coords.startY = (int)(worldStartPos.y / TILE_SIZE);
+    coords.endX = (int)(worldEndPos.x / TILE_SIZE);
+    coords.endY = (int)(worldEndPos.y / TILE_SIZE);
+    
+    // Clamp coordinates to grid bounds
+    clampCoordinate(&coords.startX, 0, GRID_SIZE - 1);
+    clampCoordinate(&coords.startY, 0, GRID_SIZE - 1);
+    clampCoordinate(&coords.endX, 0, GRID_SIZE - 1);
+    clampCoordinate(&coords.endY, 0, GRID_SIZE - 1);
+    
+    return coords;
+}
+
+
+void handleCommandMode(char *command, unsigned int *commandIndex, bool *inCommandMode, 
+                      int screenHeight, int screenWidth, Tile tileTypes[], sqlite3 *db) {
+
+    // Command mode entry
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+        if (IsKeyPressed(KEY_SEMICOLON)) {
+            printf("Entering command mode\n");
+            *inCommandMode = true;
+            *commandIndex = 0;
+            memset(command, 0, 256);
+        }
+    }
+
+    if (*inCommandMode) {
+        // Handle character input
+        int key = GetCharPressed();
+        while (key > 0) { // Process all queued characters
+            if (key >= 32 && key <= 126 && *commandIndex < 255) {
+                command[*commandIndex] = (char)key;
+                (*commandIndex)++;
+                command[*commandIndex] = '\0';
+            }
+            key = GetCharPressed(); // Get next character in queue
+        }
+
+        // Handle backspace
+        if (IsKeyPressed(KEY_BACKSPACE) && *commandIndex > 0) {
+            (*commandIndex)--;
+            command[*commandIndex] = '\0';
+        }
+
+        // Handle command execution or exit
+        if (IsKeyPressed(KEY_ENTER)) {
+            printf("Command entered: %s\n", command);
+            parseCommand(tileTypes, db);
+            *inCommandMode = false;
+        } else if (IsKeyPressed(KEY_ESCAPE)) {
+            *inCommandMode = false;
+        }
+
+        DrawRectangle(0, screenHeight - 30, screenWidth, 30, DARKGRAY);
+        DrawText(command, 10, screenHeight - 25, 20, RAYWHITE);
+    }
+}
+
+void drawPreview(WorldCoords coords, Color activeColor) {
+    int minX = (coords.startX <= coords.endX) ? coords.startX : coords.endX;
+    int maxX = (coords.startX <= coords.endX) ? coords.endX : coords.startX;
+    int minY = (coords.startY <= coords.endY) ? coords.startY : coords.endY;
+    int maxY = (coords.startY <= coords.endY) ? coords.endY : coords.startY;
+
+    for (int x = minX; x <= maxX; x++) {
+        for (int y = minY; y <= maxY; y++) {
+            Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
+            DrawRectangle(pos.x, pos.y, TILE_SIZE, TILE_SIZE, activeColor);
+            DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, RED);
+        }
+    }
+}
+
+void applyTiles(Map *map, WorldCoords coords, int activeTileKey) {
+    int minX = (coords.startX <= coords.endX) ? coords.startX : coords.endX;
+    int maxX = (coords.startX <= coords.endX) ? coords.endX : coords.startX;
+    int minY = (coords.startY <= coords.endY) ? coords.startY : coords.endY;
+    int maxY = (coords.startY <= coords.endY) ? coords.endY : coords.startY;
+
+    for (int x = minX; x <= maxX; x++) {
+        for (int y = minY; y <= maxY; y++) {
+            map->grid[x][y] = activeTileKey;
+        }
+    }
+}
+
+void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera, int screenWidth, int screenHeight) {
+    // Get the visible bounds of the grid
+    WorldCoords bounds = GetVisibleGridBounds(camera, screenWidth, screenHeight);
+    
+    // Only draw tiles within the visible bounds
+    for (int x = bounds.startX; x <= bounds.endX; x++) {
+        for (int y = bounds.startY; y <= bounds.endY; y++) {
+            int tileKey = map->grid[x][y];
+            Color tileColor = tileTypes[tileKey].color;
+            Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
+            DrawRectangle(pos.x, pos.y, TILE_SIZE, TILE_SIZE, tileColor);
+        }
+    }
+    
+    // Draw grid lines only for visible area
+    /* for (int x = bounds.startX; x <= bounds.endX; x++) { */
+    /*     for (int y = bounds.startY; y <= bounds.endY; y++) { */
+    /*         Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE }; */
+    /*         DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, LIGHTGRAY); */
+    /*     } */
+    /* } */
 }
 
 int main() {
@@ -225,205 +367,116 @@ int main() {
     const int screenHeight = 600;
     InitWindow(screenWidth, screenHeight, "Map Editor");
     SetTargetFPS(60);
+
+    // Initialize camera
+    camera.zoom = 1.0f;
+    camera.offset = (Vector2){screenWidth/2.0f, screenHeight/2.0f};
+    camera.target = (Vector2){GRID_SIZE/2 * TILE_SIZE, GRID_SIZE/2 * TILE_SIZE};
+    camera.rotation = 0.0f;
+
+    // Initialize camera state
+    CameraState cameraState;
+    cameraState.isPanning = false;
+    cameraState.lastMousePosition = (Vector2){0, 0};
+
+    // Drawing state
     bool isDrawing = false;
+    Vector2 startPos = {0};
+    Vector2 mousePos;
 
     while (!WindowShouldClose()) {
 
-        // Initialize render loop
+        // Camera movement
+        float deltaTime = GetFrameTime();
+        if (IsKeyDown(KEY_RIGHT)) camera.target.x += CAMERA_SPEED * deltaTime;
+        if (IsKeyDown(KEY_LEFT)) camera.target.x -= CAMERA_SPEED * deltaTime;
+        if (IsKeyDown(KEY_DOWN)) camera.target.y += CAMERA_SPEED * deltaTime;
+        if (IsKeyDown(KEY_UP)) camera.target.y -= CAMERA_SPEED * deltaTime;
+
+        if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+            cameraState.isPanning = true;
+            cameraState.lastMousePosition = mousePos;
+        } else if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
+            cameraState.isPanning = false;
+        }
+
+        // Update camera position while panning
+        if (cameraState.isPanning) {
+            Vector2 mouseDelta = {
+                mousePos.x - cameraState.lastMousePosition.x,
+                mousePos.y - cameraState.lastMousePosition.y
+            };
+            
+            // Move camera opposite to mouse movement, adjusted for zoom
+            camera.target.x -= mouseDelta.x / camera.zoom;
+            camera.target.y -= mouseDelta.y / camera.zoom;
+            
+            cameraState.lastMousePosition = mousePos;
+        }
+
+        // Get mouse position in world coordinates
+        mousePos = GetMousePosition();
+
+        float wheel = GetMouseWheelMove();
+        if (wheel != 0) {
+            // Get mouse position before zoom for zoom targeting
+            Vector2 mouseWorldPos = GetWorldCoordinates(GetMousePosition(), camera);
+            
+            // Apply zoom
+            camera.zoom += wheel * 0.1f;
+            if (camera.zoom < 0.2f) camera.zoom = 0.1f;
+            
+            // Adjust camera target to zoom towards mouse position
+            Vector2 newMouseWorldPos = GetWorldCoordinates(GetMousePosition(), camera);
+            camera.target.x += mouseWorldPos.x - newMouseWorldPos.x;
+            camera.target.y += mouseWorldPos.y - newMouseWorldPos.y;
+        }
+
         BeginDrawing();
-        ClearBackground(RAYWHITE);
+        ClearBackground(BLACK);
 
-        // Active tile
-        int mouseX = GetMouseX()/32;
-        int mouseY = GetMouseY()/32;
+        BeginMode2D(camera);
+
+        // Update mouse position
         Color activeColor = tileTypes[activeTileKey].color;
-        
-        // Mouse press event
-        int startX;
-        int startY;
+
+        // Draw existing map
+        drawExistingMap(&currentMap, tileTypes, camera, screenWidth, screenHeight);
+
+        // Handle mouse input and drawing
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-            if (mouseX >= 0 && mouseY >= 0 && mouseX < GRID_SIZE && mouseY < GRID_SIZE) {
-                if (mouseX > currentMap.maxX) {
-                    currentMap.maxX = mouseX;
-                }
-                if (mouseX < currentMap.minX) {
-                    currentMap.minX = mouseX;
-                }
-                if (mouseY > currentMap.maxY) {
-                    currentMap.maxY = mouseY;
-                }
-                if (mouseY < currentMap.minY) {
-                    currentMap.minY = mouseY;
-                }
-                startX = mouseX;
-                startY = mouseY;
-                isDrawing = true;
-            }
-        }
-
-        int endX;
-        int endY;
-
-        // Command mode
-        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
-            if (IsKeyPressed(KEY_SEMICOLON)) {
-                printf("Entering command mode\n");
-                inCommandMode = true;
-                commandIndex = 0;
-                memset(command, 0, sizeof(command));
-            }
-        }
-
-        // Command processing
-        if (inCommandMode) {
-            int key = GetCharPressed();
-            if (key >= 32 && key <= 126 && commandIndex < sizeof(command) -1) {
-                command[commandIndex++] = (char)key;
-            } else if (IsKeyPressed(KEY_BACKSPACE) && commandIndex > 0) {
-                command[--commandIndex] ='\0';
-            } else if (IsKeyPressed(KEY_ENTER)) {
-                printf("Command entered: %s\n", command);
-                parseCommand(tileTypes, db);
-                inCommandMode = false;
-            } else if (IsKeyPressed(KEY_ESCAPE)) {
-                inCommandMode = false;
-            }
-            DrawRectangle(0, screenHeight - 30, screenWidth, 30, DARKGRAY);
-            DrawText(command, 10, screenHeight -25, 20, RAYWHITE);
-        }
-        
-        // Draw grid
-        for (int x = currentMap.minX; x <= currentMap.maxX; x++) {
-            for (int y = currentMap.minY; y <= currentMap.maxY; y++) {
-                if (currentMap.grid[x][y] != 0) {
-                    int tileKey = currentMap.grid[x][y]; 
-                    Color tileColor = tileTypes[tileKey].color;
-                    DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, tileColor); 
-                }
-            }
+            startPos = mousePos;
+            isDrawing = true;
         }
 
         if (isDrawing) {
-
-            endX = mouseX;
-            endY = mouseY;
-            
-            if (endX > GRID_SIZE) {
-                endX = GRID_SIZE;
-            } else if (endX < 0) {
-                endX = 0;
-            } else {
-                endX = mouseX;
-            }
-
-            if (endY > GRID_SIZE) {
-                endY = GRID_SIZE;
-            } else if (endY < 0) {
-                endY = 0;
-            } else {
-                endY = mouseY;
-            }
-
-            if (startX <= endX && startY <= endY ) {
-                for (int x = startX; x <= endX; x++) {
-                    for (int y = startY; y <= endY; y++) {
-                        DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
-                        DrawRectangleLines(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
-                    }
-                }
-            } else if (startX >= endX && startY >= endY) {
-                for (int x = endX; x <= startX; x++) {
-                    for (int y = endY; y <= startY; y++) {
-                        DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
-                        DrawRectangleLines(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
-                    }
-                }
-            } else if (startX >= endX && startY <= endY) {
-                for (int x = endX; x <= startX; x++) {
-                    for (int y = startY; y <= endY; y++) {
-                        DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
-                        DrawRectangleLines(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
-                    }
-                }
-            } else if (startX <= endX && startY >= endY) {
-                for (int x = startX; x <= endX; x++) {
-                    for (int y = endY; y <= startY; y++) {
-                        DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
-                        DrawRectangleLines(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
-                    }
-                }
-            }
+            WorldCoords coords = GetWorldGridCoords(startPos, mousePos, camera);
+            drawPreview(coords, activeColor);
         } else {
-            DrawRectangle(mouseX * TILE_SIZE, mouseY * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
-            DrawRectangleLines(mouseX * TILE_SIZE, mouseY * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
+            // Draw cursor preview
+            WorldCoords coords = GetWorldGridCoords(mousePos, mousePos, camera);
+            Vector2 tilePos = { coords.startX * TILE_SIZE, coords.startY * TILE_SIZE };
+            DrawRectangle(tilePos.x, tilePos.y, TILE_SIZE, TILE_SIZE, activeColor);
+            DrawRectangleLines(tilePos.x, tilePos.y, TILE_SIZE, TILE_SIZE, RED);
         }
 
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
-            endX = mouseX;
-            endY = mouseY;
-            
-            if (endX > GRID_SIZE) {
-                endX = GRID_SIZE;
-            } else if (endX < 0) {
-                endX = 0;
-            } else {
-                endX = mouseX;
-            }
-
-            if (endY > GRID_SIZE) {
-                endY = GRID_SIZE;
-            } else if (endY < 0) {
-                endY = 0;
-            } else {
-                endY = mouseY;
-            }
-
-
-            if (endX > currentMap.maxX) {
-                currentMap.maxX = endX;
-            }
-            if (endX < currentMap.minX) {
-                currentMap.minX = endX;
-            }
-            if (endY > currentMap.maxY) {
-                currentMap.maxY = endY;
-            }
-            if (endY < currentMap.minY) {
-                currentMap.minY = endY;
-            }
-            printf("Drawing released with range ((%d,%d),(%d,%d))\n", startX, endX, startY, endY);
-
-            if (startX <= endX && startY <= endY ) {
-                for (int x = startX; x <= endX; x++) {
-                    for (int y = startY; y <= endY; y++) {
-                        currentMap.grid[x][y] = activeTileKey;
-                    }
-                }
-            } else if (startX >= endX && startY >= endY) {
-                for (int x = endX; x <= startX; x++) {
-                    for (int y = endY; y <= startY; y++) {
-                        currentMap.grid[x][y] = activeTileKey;
-                    }
-                }
-            } else if (startX >= endX && startY <= endY) {
-                for (int x = endX; x <= startX; x++) {
-                    for (int y = startY; y <= endY; y++) {
-                        currentMap.grid[x][y] = activeTileKey;
-                    }
-                }
-            } else if (startX <= endX && startY >= endY) {
-                for (int x = startX; x <= endX; x++) {
-                    for (int y = endY; y <= startY; y++) {
-                        currentMap.grid[x][y] = activeTileKey;
-                    }
-                }
-            }
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && isDrawing) {
+            WorldCoords coords = GetWorldGridCoords(startPos, mousePos, camera);
+            applyTiles(&currentMap, coords, activeTileKey);
+            printf("Drawing released with range ((%d,%d),(%d,%d))\n", 
+                   coords.startX, coords.endX, coords.startY, coords.endY);
             isDrawing = false;
         }
 
+        EndMode2D();
+
+        // Handle command mode
+        handleCommandMode(command, &commandIndex, &inCommandMode, screenHeight, 
+                         screenWidth, tileTypes, db);
+
         EndDrawing();
     }
+
     CloseWindow();
-   
     return 0;
 }
