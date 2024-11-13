@@ -33,6 +33,11 @@ typedef struct CameraState {
     Vector2 lastMousePosition;
 } CameraState;
 
+typedef struct WindowState {
+    int width;
+    int height;
+} WindowState;
+
 // Variables
 char command[256] = {0};
 unsigned int commandIndex = 0;
@@ -171,6 +176,25 @@ void parseCommand(Tile tileTypes[], sqlite3 *db) {
     }
 }
 
+// Function to update camera offset based on new window dimensions
+void UpdateCameraOffset(Camera2D *camera, int newWidth, int newHeight) {
+    camera->offset = (Vector2){ newWidth/2.0f, newHeight/2.0f };
+}
+
+// Function to handle window resize
+void HandleWindowResize(WindowState *windowState, Camera2D *camera) {
+    // Get current window dimensions
+    int newWidth = GetScreenWidth();
+    int newHeight = GetScreenHeight();
+    
+    // Only update if dimensions actually changed
+    if (newWidth != windowState->width || newHeight != windowState->height) {
+        windowState->width = newWidth;
+        windowState->height = newHeight;
+        UpdateCameraOffset(camera, newWidth, newHeight);
+    }
+}
+
 void clampCoordinate(int *coord, int min, int max) {
     if (*coord > max) *coord = max;
     else if (*coord < min) *coord = 0;
@@ -276,6 +300,7 @@ void handleCommandMode(char *command, unsigned int *commandIndex, bool *inComman
     }
 }
 
+
 void drawPreview(WorldCoords coords, Color activeColor) {
     int minX = (coords.startX <= coords.endX) ? coords.startX : coords.endX;
     int maxX = (coords.startX <= coords.endX) ? coords.endX : coords.startX;
@@ -362,15 +387,25 @@ int main() {
     }
     sqlite3_finalize(tileStmt);
 
-    // Window Initialization
-    const int screenWidth = 800;
-    const int screenHeight = 600;
-    InitWindow(screenWidth, screenHeight, "Map Editor");
+    // Get the current monitor dimensions
+    /* int monitorWidth = GetMonitorWidth(GetCurrentMonitor()); */
+    /* int monitorHeight = GetMonitorHeight(GetCurrentMonitor()); */
+    int windowWidth = 800;
+    int windowHeight = 600;
+
+    // Initialize window with monitor dimensions
+    InitWindow(windowWidth, windowHeight, "Map Editor");
+    SetWindowState(FLAG_WINDOW_RESIZABLE);  // Enable window resizing
     SetTargetFPS(60);
+    SetExitKey(KEY_NULL);
+
+    WindowState windowState;
+    windowState.width = windowWidth;
+    windowState.height = windowHeight;
 
     // Initialize camera
     camera.zoom = 1.0f;
-    camera.offset = (Vector2){screenWidth/2.0f, screenHeight/2.0f};
+    camera.offset = (Vector2){windowState.width/2.0f, windowState.width/2.0f};
     camera.target = (Vector2){GRID_SIZE/2 * TILE_SIZE, GRID_SIZE/2 * TILE_SIZE};
     camera.rotation = 0.0f;
 
@@ -385,6 +420,8 @@ int main() {
     Vector2 mousePos;
 
     while (!WindowShouldClose()) {
+        // Handle window resizing
+        HandleWindowResize(&windowState, &camera);
 
         // Camera movement
         float deltaTime = GetFrameTime();
@@ -441,7 +478,7 @@ int main() {
         Color activeColor = tileTypes[activeTileKey].color;
 
         // Draw existing map
-        drawExistingMap(&currentMap, tileTypes, camera, screenWidth, screenHeight);
+        drawExistingMap(&currentMap, tileTypes, camera, windowState.width, windowState.height);
 
         // Handle mouse input and drawing
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
@@ -471,8 +508,8 @@ int main() {
         EndMode2D();
 
         // Handle command mode
-        handleCommandMode(command, &commandIndex, &inCommandMode, screenHeight, 
-                         screenWidth, tileTypes, db);
+        handleCommandMode(command, &commandIndex, &inCommandMode, windowState.height, 
+                         windowState.width, tileTypes, db);
 
         EndDrawing();
     }
