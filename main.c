@@ -225,6 +225,7 @@ int main() {
     const int screenHeight = 600;
     InitWindow(screenWidth, screenHeight, "Map Editor");
     SetTargetFPS(60);
+    bool isDrawing = false;
 
     while (!WindowShouldClose()) {
 
@@ -236,9 +237,10 @@ int main() {
         int mouseX = GetMouseX()/32;
         int mouseY = GetMouseY()/32;
         Color activeColor = tileTypes[activeTileKey].color;
-        DrawRectangle(mouseX * TILE_SIZE, mouseY * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
-        DrawRectangleLines(mouseX * TILE_SIZE, mouseY * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
-
+        
+        // Mouse press event
+        int startX;
+        int startY;
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             if (mouseX >= 0 && mouseY >= 0 && mouseX < GRID_SIZE && mouseY < GRID_SIZE) {
                 if (mouseX > currentMap.maxX) {
@@ -253,10 +255,14 @@ int main() {
                 if (mouseY < currentMap.minY) {
                     currentMap.minY = mouseY;
                 }
-                currentMap.grid[mouseX][mouseY] = activeTileKey;
-                printf("Coordinate (%d,%d) assigned tile key: %d\n", mouseX, mouseY, activeTileKey);
+                startX = mouseX;
+                startY = mouseY;
+                isDrawing = true;
             }
         }
+
+        int endX;
+        int endY;
 
         // Command mode
         if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
@@ -296,6 +302,125 @@ int main() {
                 }
             }
         }
+
+        if (isDrawing) {
+
+            endX = mouseX;
+            endY = mouseY;
+            
+            if (endX > GRID_SIZE) {
+                endX = GRID_SIZE;
+            } else if (endX < 0) {
+                endX = 0;
+            } else {
+                endX = mouseX;
+            }
+
+            if (endY > GRID_SIZE) {
+                endY = GRID_SIZE;
+            } else if (endY < 0) {
+                endY = 0;
+            } else {
+                endY = mouseY;
+            }
+
+            if (startX <= endX && startY <= endY ) {
+                for (int x = startX; x <= endX; x++) {
+                    for (int y = startY; y <= endY; y++) {
+                        DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
+                        DrawRectangleLines(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
+                    }
+                }
+            } else if (startX >= endX && startY >= endY) {
+                for (int x = endX; x <= startX; x++) {
+                    for (int y = endY; y <= startY; y++) {
+                        DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
+                        DrawRectangleLines(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
+                    }
+                }
+            } else if (startX >= endX && startY <= endY) {
+                for (int x = endX; x <= startX; x++) {
+                    for (int y = startY; y <= endY; y++) {
+                        DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
+                        DrawRectangleLines(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
+                    }
+                }
+            } else if (startX <= endX && startY >= endY) {
+                for (int x = startX; x <= endX; x++) {
+                    for (int y = endY; y <= startY; y++) {
+                        DrawRectangle(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
+                        DrawRectangleLines(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
+                    }
+                }
+            }
+        } else {
+            DrawRectangle(mouseX * TILE_SIZE, mouseY * TILE_SIZE, TILE_SIZE, TILE_SIZE, activeColor);
+            DrawRectangleLines(mouseX * TILE_SIZE, mouseY * TILE_SIZE, TILE_SIZE, TILE_SIZE, RED);
+        }
+
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+            endX = mouseX;
+            endY = mouseY;
+            
+            if (endX > GRID_SIZE) {
+                endX = GRID_SIZE;
+            } else if (endX < 0) {
+                endX = 0;
+            } else {
+                endX = mouseX;
+            }
+
+            if (endY > GRID_SIZE) {
+                endY = GRID_SIZE;
+            } else if (endY < 0) {
+                endY = 0;
+            } else {
+                endY = mouseY;
+            }
+
+
+            if (endX > currentMap.maxX) {
+                currentMap.maxX = endX;
+            }
+            if (endX < currentMap.minX) {
+                currentMap.minX = endX;
+            }
+            if (endY > currentMap.maxY) {
+                currentMap.maxY = endY;
+            }
+            if (endY < currentMap.minY) {
+                currentMap.minY = endY;
+            }
+            printf("Drawing released with range ((%d,%d),(%d,%d))\n", startX, endX, startY, endY);
+
+            if (startX <= endX && startY <= endY ) {
+                for (int x = startX; x <= endX; x++) {
+                    for (int y = startY; y <= endY; y++) {
+                        currentMap.grid[x][y] = activeTileKey;
+                    }
+                }
+            } else if (startX >= endX && startY >= endY) {
+                for (int x = endX; x <= startX; x++) {
+                    for (int y = endY; y <= startY; y++) {
+                        currentMap.grid[x][y] = activeTileKey;
+                    }
+                }
+            } else if (startX >= endX && startY <= endY) {
+                for (int x = endX; x <= startX; x++) {
+                    for (int y = startY; y <= endY; y++) {
+                        currentMap.grid[x][y] = activeTileKey;
+                    }
+                }
+            } else if (startX <= endX && startY >= endY) {
+                for (int x = startX; x <= endX; x++) {
+                    for (int y = endY; y <= startY; y++) {
+                        currentMap.grid[x][y] = activeTileKey;
+                    }
+                }
+            }
+            isDrawing = false;
+        }
+
         EndDrawing();
     }
     CloseWindow();

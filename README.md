@@ -15,9 +15,7 @@ command prefix is `:`
 
 ## Roadmap
 
-- Core: click and drag tile placement.
 - Core: map scrolling and panning.
-
 
 - Feature: sprite tilesets.
 - Feature: z-axis.
