@@ -13,7 +13,7 @@
 typedef struct Tile {
     int tileKey;
     int walkable;
-    Color color;
+    Texture2D tex;
 } Tile;
 
 typedef struct Map {
@@ -49,6 +49,84 @@ sqlite3 *db;
 Camera2D camera = {0};
 
 // Functions
+
+Tile* loadTileSet(sqlite3 *db) {
+
+    // Database Initialization
+    if (sqlite3_open("test.db", &db) == SQLITE_OK) {
+        printf("Database opened successfully.\n");
+    } else {
+        printf("Error opening database: %s\n", sqlite3_errmsg(db));
+    };
+
+    // Initialize variables
+    Tile* tileTypes = NULL;
+
+    // Get number of tile types
+    const char* countQuery = "SELECT MAX(tile_key) + 1 FROM tile;";
+    sqlite3_stmt* countStmt;
+
+    if (sqlite3_prepare_v2(db, countQuery, -1, &countStmt, NULL) == SQLITE_OK) {
+        if (sqlite3_step(countStmt) == SQLITE_ROW) {
+            maxTileKey = sqlite3_column_int(countStmt, 0);
+        }
+    } else {
+        printf("Error preparing count query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(countStmt);
+        return NULL;
+    }
+    sqlite3_finalize(countStmt);
+    
+    // Allocate memory for the tiles
+    tileTypes = (Tile*)malloc(maxTileKey * sizeof(Tile));
+    if (tileTypes == NULL) {
+        printf("Memory allocation failed\n");
+        return NULL;
+    }
+
+    // Load tile types from database
+    const char* tileQuery = "SELECT tile_key, walkable, color FROM tile;";
+    sqlite3_stmt* tileStmt;
+    if (sqlite3_prepare_v2(db, tileQuery, -1, &tileStmt, NULL) == SQLITE_OK) {
+        while (sqlite3_step(tileStmt) == SQLITE_ROW) {
+            int tileKey = sqlite3_column_int(tileStmt, 0);
+            int walkable = sqlite3_column_int(tileStmt, 1);
+            unsigned int colorHex = sqlite3_column_int(tileStmt, 2);
+
+            // Get color
+            Color color = GetColor(colorHex);
+            
+            // Create color array
+            Color pixel_data[TILE_SIZE * TILE_SIZE];
+            for (int i = 0; i < TILE_SIZE*TILE_SIZE; i++) {
+                pixel_data[i] = color;
+            }
+         
+            // Initialize the Image for the tile
+            Image img = {
+                .data = pixel_data,             // Directly assign the pixel data
+                .width = TILE_SIZE,
+                .height = TILE_SIZE,
+                .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+                .mipmaps = 1
+            };
+
+            
+            Texture2D tex = LoadTextureFromImage(img);
+
+            // Populate tile with color array
+            tileTypes[tileKey] = (Tile){ tileKey, walkable, tex };
+
+        }
+    } else {
+        printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
+    }
+    sqlite3_finalize(tileStmt);
+    sqlite3_close(db);
+
+    return tileTypes;
+}
+
 void loadMap(sqlite3 *db, const char *table) {
 
     // Database Initialization
@@ -301,7 +379,7 @@ void handleCommandMode(char *command, unsigned int *commandIndex, bool *inComman
 }
 
 
-void drawPreview(WorldCoords coords, Color activeColor) {
+void drawPreview(WorldCoords coords, Tile tileTypes[], int activeTileKey) {
     int minX = (coords.startX <= coords.endX) ? coords.startX : coords.endX;
     int maxX = (coords.startX <= coords.endX) ? coords.endX : coords.startX;
     int minY = (coords.startY <= coords.endY) ? coords.startY : coords.endY;
@@ -309,8 +387,11 @@ void drawPreview(WorldCoords coords, Color activeColor) {
 
     for (int x = minX; x <= maxX; x++) {
         for (int y = minY; y <= maxY; y++) {
+
+            // Draw the texture
+            Texture2D tileTexture = tileTypes[activeTileKey].tex;
             Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
-            DrawRectangle(pos.x, pos.y, TILE_SIZE, TILE_SIZE, activeColor);
+            DrawTexture(tileTexture, pos.x, pos.y, WHITE);
             DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, RED);
         }
     }
@@ -337,83 +418,18 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera, int screenWidt
     for (int x = bounds.startX; x <= bounds.endX; x++) {
         for (int y = bounds.startY; y <= bounds.endY; y++) {
             int tileKey = map->grid[x][y];
-            Color tileColor = tileTypes[tileKey].color;
+            
+            // Draw the texture for each tile
+            Texture2D tileTexture = tileTypes[tileKey].tex;
             Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
-            DrawRectangle(pos.x, pos.y, TILE_SIZE, TILE_SIZE, tileColor);
+            DrawTexture(tileTexture, pos.x, pos.y, WHITE);
         }
     }
-    
-    // Draw grid lines only for visible area
-    /* for (int x = bounds.startX; x <= bounds.endX; x++) { */
-    /*     for (int y = bounds.startY; y <= bounds.endY; y++) { */
-    /*         Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE }; */
-    /*         DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, LIGHTGRAY); */
-    /*     } */
-    /* } */
 }
 
-Tile* loadTileSet(sqlite3 *db) {
-
-    // Database Initialization
-    if (sqlite3_open("test.db", &db) == SQLITE_OK) {
-        printf("Database opened successfully.\n");
-    } else {
-        printf("Error opening database: %s\n", sqlite3_errmsg(db));
-    };
-
-    // Initialize variables
-    Tile* tileTypes = NULL;
-
-    // Get number of tile types
-    const char* countQuery = "SELECT MAX(tile_key) + 1 FROM tile;";
-    sqlite3_stmt* countStmt;
-    int maxTileKey = 0;
-
-    if (sqlite3_prepare_v2(db, countQuery, -1, &countStmt, NULL) == SQLITE_OK) {
-        if (sqlite3_step(countStmt) == SQLITE_ROW) {
-            maxTileKey = sqlite3_column_int(countStmt, 0);
-        }
-    } else {
-        printf("Error preparing count query: %s\n", sqlite3_errmsg(db));
-        sqlite3_finalize(countStmt);
-        return NULL;
-    }
-    sqlite3_finalize(countStmt);
-    
-    // Allocate memory for the tiles
-    tileTypes = (Tile*)malloc(maxTileKey * sizeof(Tile));
-    if (tileTypes == NULL) {
-        printf("Memory allocation failed\n");
-        return NULL;
-    }
-
-    // Load tile types from database
-    const char* tileQuery = "SELECT tile_key, walkable, color FROM tile;";
-    sqlite3_stmt* tileStmt;
-    if (sqlite3_prepare_v2(db, tileQuery, -1, &tileStmt, NULL) == SQLITE_OK) {
-        while (sqlite3_step(tileStmt) == SQLITE_ROW) {
-            int tileKey = sqlite3_column_int(tileStmt, 0);
-            int walkable = sqlite3_column_int(tileStmt, 1);
-            unsigned int colorHex = sqlite3_column_int(tileStmt, 2);
-            Color color = GetColor(colorHex);
-
-            tileTypes[tileKey] = (Tile){ tileKey, walkable, color };
-        }
-    } else {
-        printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
-        free(tileTypes);
-        sqlite3_finalize(tileStmt);
-        return NULL;
-    }
-    sqlite3_finalize(tileStmt);
-    sqlite3_close(db);
-
-    return tileTypes;
-}
 
 int main() {
     loadMap(db, "map");
-    Tile* tileTypes = loadTileSet(db);
 
     // Get the current monitor dimensions
     /* int monitorWidth = GetMonitorWidth(GetCurrentMonitor()); */
@@ -426,6 +442,9 @@ int main() {
     SetWindowState(FLAG_WINDOW_RESIZABLE);  // Enable window resizing
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
+
+    // Load textures
+    Tile* tileTypes = loadTileSet(db);
 
     WindowState windowState;
     windowState.width = windowWidth;
@@ -502,9 +521,6 @@ int main() {
 
         BeginMode2D(camera);
 
-        // Update mouse position
-        Color activeColor = tileTypes[activeTileKey].color;
-
         // Draw existing map
         drawExistingMap(&currentMap, tileTypes, camera, windowState.width, windowState.height);
 
@@ -516,12 +532,13 @@ int main() {
 
         if (isDrawing) {
             WorldCoords coords = GetWorldGridCoords(startPos, mousePos, camera);
-            drawPreview(coords, activeColor);
+            drawPreview(coords, tileTypes, activeTileKey);
         } else {
             // Draw cursor preview
             WorldCoords coords = GetWorldGridCoords(mousePos, mousePos, camera);
+            Texture2D tileTexture = tileTypes[activeTileKey].tex;
             Vector2 tilePos = { coords.startX * TILE_SIZE, coords.startY * TILE_SIZE };
-            DrawRectangle(tilePos.x, tilePos.y, TILE_SIZE, TILE_SIZE, activeColor);
+            DrawTexture(tileTexture, tilePos.x, tilePos.y, WHITE);
             DrawRectangleLines(tilePos.x, tilePos.y, TILE_SIZE, TILE_SIZE, RED);
         }
 
