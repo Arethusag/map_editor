@@ -352,40 +352,68 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera, int screenWidt
     /* } */
 }
 
-int main() {
+Tile* loadTileSet(sqlite3 *db) {
+
     // Database Initialization
     if (sqlite3_open("test.db", &db) == SQLITE_OK) {
         printf("Database opened successfully.\n");
     } else {
         printf("Error opening database: %s\n", sqlite3_errmsg(db));
     };
-    loadMap(db, "map");
+
+    // Initialize variables
+    Tile* tileTypes = NULL;
 
     // Get number of tile types
-    const char* countQuery = "SELECT MAX(tile_key) +1 FROM tile;";
+    const char* countQuery = "SELECT MAX(tile_key) + 1 FROM tile;";
     sqlite3_stmt* countStmt;
+    int maxTileKey = 0;
+
     if (sqlite3_prepare_v2(db, countQuery, -1, &countStmt, NULL) == SQLITE_OK) {
         if (sqlite3_step(countStmt) == SQLITE_ROW) {
             maxTileKey = sqlite3_column_int(countStmt, 0);
         }
+    } else {
+        printf("Error preparing count query: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(countStmt);
+        return NULL;
     }
     sqlite3_finalize(countStmt);
-    printf("Number of tile types to be loaded: %d\n", maxTileKey);
+    
+    // Allocate memory for the tiles
+    tileTypes = (Tile*)malloc(maxTileKey * sizeof(Tile));
+    if (tileTypes == NULL) {
+        printf("Memory allocation failed\n");
+        return NULL;
+    }
 
     // Load tile types from database
-    Tile tileTypes[maxTileKey];
     const char* tileQuery = "SELECT tile_key, walkable, color FROM tile;";
     sqlite3_stmt* tileStmt;
     if (sqlite3_prepare_v2(db, tileQuery, -1, &tileStmt, NULL) == SQLITE_OK) {
         while (sqlite3_step(tileStmt) == SQLITE_ROW) {
             int tileKey = sqlite3_column_int(tileStmt, 0);
             int walkable = sqlite3_column_int(tileStmt, 1);
-            const unsigned int colorHex = sqlite3_column_int(tileStmt, 2);
+            unsigned int colorHex = sqlite3_column_int(tileStmt, 2);
             Color color = GetColor(colorHex);
+
             tileTypes[tileKey] = (Tile){ tileKey, walkable, color };
         }
+    } else {
+        printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
+        free(tileTypes);
+        sqlite3_finalize(tileStmt);
+        return NULL;
     }
     sqlite3_finalize(tileStmt);
+    sqlite3_close(db);
+
+    return tileTypes;
+}
+
+int main() {
+    loadMap(db, "map");
+    Tile* tileTypes = loadTileSet(db);
 
     // Get the current monitor dimensions
     /* int monitorWidth = GetMonitorWidth(GetCurrentMonitor()); */
@@ -514,6 +542,7 @@ int main() {
         EndDrawing();
     }
 
+    free(tileTypes);
     CloseWindow();
     return 0;
 }
