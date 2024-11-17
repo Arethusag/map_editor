@@ -6,7 +6,7 @@
 
 // Definitions
 #define TILE_SIZE 32
-#define GRID_SIZE 256
+#define GRID_SIZE 16
 #define CAMERA_SPEED 300.0f
 
 // Structs
@@ -60,7 +60,7 @@ Tile* loadTileSet(sqlite3 *db) {
     };
 
     // Initialize variables
-    Tile* tileTypes = NULL;
+    Tile* tileTypes;
 
     // Get number of tile types
     const char* countQuery = "SELECT MAX(tile_key) + 1 FROM tile;";
@@ -85,21 +85,36 @@ Tile* loadTileSet(sqlite3 *db) {
     }
 
     // Load tile types from database
-    const char* tileQuery = "SELECT tile_key, walkable, color FROM tile;";
+    const char* tileQuery = "SELECT tile_key, walkable, data FROM tile "
+                            "LEFT JOIN texture ON tile.texture_key = texture.texture_key";
     sqlite3_stmt* tileStmt;
     if (sqlite3_prepare_v2(db, tileQuery, -1, &tileStmt, NULL) == SQLITE_OK) {
         while (sqlite3_step(tileStmt) == SQLITE_ROW) {
             int tileKey = sqlite3_column_int(tileStmt, 0);
             int walkable = sqlite3_column_int(tileStmt, 1);
-            unsigned int colorHex = sqlite3_column_int(tileStmt, 2);
+            const unsigned char* blob_data = sqlite3_column_blob(tileStmt, 2);
+            int blob_size = sqlite3_column_bytes(tileStmt, 2);
 
-            // Get color
-            Color color = GetColor(colorHex);
-            
-            // Create color array
+            // Verify blob size matches expected size (32x32 pixels * 4 bytes per pixel)
+            if (blob_size != TILE_SIZE * TILE_SIZE * 4) {
+                printf("Error: Invalid blob size %d (expected %d)\n", 
+                       blob_size, TILE_SIZE * TILE_SIZE * 4);
+                continue;
+            }
+
+            // Create color array for the texture
             Color pixel_data[TILE_SIZE * TILE_SIZE];
-            for (int i = 0; i < TILE_SIZE*TILE_SIZE; i++) {
-                pixel_data[i] = color;
+            
+            // Parse blob data into Color array
+            for (int i = 0; i < TILE_SIZE * TILE_SIZE; i++) {
+                // Each pixel is 4 bytes (RGBA)
+                int offset = i * 4;
+                pixel_data[i] = (Color){
+                    blob_data[offset],     // R
+                    blob_data[offset + 1], // G
+                    blob_data[offset + 2], // B
+                    blob_data[offset + 3]  // A
+                };
             }
          
             // Initialize the Image for the tile
@@ -110,12 +125,12 @@ Tile* loadTileSet(sqlite3 *db) {
                 .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
                 .mipmaps = 1
             };
-
-            
             Texture2D tex = LoadTextureFromImage(img);
 
             // Populate tile with color array
             tileTypes[tileKey] = (Tile){ tileKey, walkable, tex };
+
+            printf("Tile %d created", tileKey);
 
         }
     } else {
@@ -123,6 +138,7 @@ Tile* loadTileSet(sqlite3 *db) {
     }
     sqlite3_finalize(tileStmt);
     sqlite3_close(db);
+
 
     return tileTypes;
 }
@@ -158,6 +174,7 @@ void loadMap(sqlite3 *db, const char *table) {
     sqlite3_finalize(mapStmt);
     sqlite3_close(db);
     currentMap.name = table;
+    printf("Map table \"%s\" successfully loaded\n", currentMap.name);
 }
 
 void saveMap(sqlite3 *db, char *table) {
@@ -431,21 +448,20 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera, int screenWidt
 int main() {
     loadMap(db, "map");
 
-    // Get the current monitor dimensions
-    /* int monitorWidth = GetMonitorWidth(GetCurrentMonitor()); */
-    /* int monitorHeight = GetMonitorHeight(GetCurrentMonitor()); */
+    // Set window dimensions
     int windowWidth = 800;
     int windowHeight = 600;
 
-    // Initialize window with monitor dimensions
+    // Initialize window
     InitWindow(windowWidth, windowHeight, "Map Editor");
-    SetWindowState(FLAG_WINDOW_RESIZABLE);  // Enable window resizing
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
 
     // Load textures
     Tile* tileTypes = loadTileSet(db);
 
+    // Window state
+    SetWindowState(FLAG_WINDOW_RESIZABLE);  // Enable window resizing
     WindowState windowState;
     windowState.width = windowWidth;
     windowState.height = windowHeight;

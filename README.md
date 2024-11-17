@@ -15,7 +15,7 @@ command prefix is `:`
 
 ## Roadmap
 
-- Feature: sprite tilesets.
+- Feature: custom tileset.
 - Feature: z-axis.
 - Feature: minimap.
 
