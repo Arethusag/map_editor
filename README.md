@@ -15,10 +15,9 @@ command prefix is `:`
 
 ## Roadmap
 
-- Feature: custom tileset.
-- Feature: z-axis.
-- Feature: minimap.
-
+- Feature: implement 4 ground tile types (water, grass, dirt, stone)
+- Feature: implement painter style preview and placement with edge algorithm.
+- Feature: undo/redo
 
 
 
