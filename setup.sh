@@ -37,7 +37,12 @@ CREATE TABLE IF NOT EXISTS tile(
     FOREIGN KEY (texture_key) REFERENCES texture(texture_key)
 ) WITHOUT rowid;
 INSERT INTO tile (tile_key, walkable, description, texture_key)
-    VALUES (0, 0, 'Default tile', 0)
+    VALUES (0, 0, 'default', 0),
+           (1, 0, 'grass'  , 1),
+           (2, 0, 'water'  , 41),
+           (3, 0, 'dirt'   , 28),
+           (4, 0, 'rock'   , 21),
+           (5, 0, 'stone'  , 36)
 ; 
 
 END_SQL
@@ -93,4 +98,4 @@ END_SQL
 rm -f $FILE
 
 # Process remaining tiles
-bash assets/extract_sprites.sh
+bash utils/extract_sprites.sh

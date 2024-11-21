@@ -1,11 +1,11 @@
 #!/bin/bash
-
+cd $(git rev-parse --show-toplevel)
 
 # Example config file format
 # @assets/tileset1.png"     # Specify input file first with @file
 # 1-21:tile:grass    # Sequential format <start>-<end>:<type>:<name>
-config_file="assets/sprites.conf"
-db_file="test.db"
+config_file='assets/sprites.conf'
+db_file='test.db'
 
 # Initialize SQLite database
 # echo "Initializing database..."
@@ -62,6 +62,10 @@ extract_tile() {
     local type=$2
     local name=$3
     local source=$4
+    local tile_num=$5
+
+    local x=$(( (tile_num - 1) % cols ))
+    local y=$(( (tile_num - 1) / cols ))
     
     local crop_x=$((x * 32))
     local crop_y=$((y * 32))
@@ -131,7 +135,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     
     style_counter=1
     for i in $(seq "$start" "$end"); do
-        extract_tile "$style_counter" "$type" "$name" "$current_file"
+        extract_tile "$style_counter" "$type" "$name" "$current_file" "$i"
         style_counter=$(($style_counter+1))
     done
     
