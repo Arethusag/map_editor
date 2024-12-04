@@ -3,24 +3,9 @@ cd $(git rev-parse --show-toplevel)
 
 # Example config file format
 # @assets/tileset1.png"     # Specify input file first with @file
-# 1-21:tile:grass    # Sequential format <start>-<end>:<type>:<name>
+# 2-21:tile:grass:1    # Sequential format <start>-<end>:<type>:<name>:<tile_key>
 config_file='assets/sprites.conf'
 db_file='test.db'
-
-# Initialize SQLite database
-# echo "Initializing database..."
-# sqlite3 "$db_file" << 'END_SQL'
-# DROP TABLE IF EXISTS texture;
-# CREATE TABLE IF NOT EXISTS texture(
-#     texture_key INTEGER PRIMARY KEY,
-#     type TEXT NOT NULL,
-#     name TEXT NOT NULL,
-#     style INTEGER NOT NULL,
-#     source TEXT NOT NULL,
-#     data BLOB NOT NULL
-# );
-# END_SQL
-
 current_file=""
 
 # Function to initialize file processing
@@ -62,10 +47,11 @@ extract_tile() {
     local type=$2
     local name=$3
     local source=$4
-    local tile_num=$5
+    local sprite_pos=$5
+    local tile_key=$6
 
-    local x=$(( (tile_num - 1) % cols ))
-    local y=$(( (tile_num - 1) / cols ))
+    local x=$(( (sprite_pos - 1) % cols ))
+    local y=$(( (sprite_pos - 1) / cols ))
     
     local crop_x=$((x * 32))
     local crop_y=$((y * 32))
@@ -85,12 +71,13 @@ extract_tile() {
     
     # Insert into database
     sqlite3 "$db_file" << EOF
-INSERT INTO texture (type, name, style, source, data)
+INSERT INTO texture (type, name, style, source, tile_key, data)
 VALUES (
     '${type}',
     '${name}',
     ${style},
     '${source}',
+    '${tile_key}',
     readfile('${bin_file}')
 );
 EOF
@@ -121,7 +108,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         continue
     fi
     
-    IFS=: read -r range type name <<< "$line"
+    IFS=: read -r range type name tile_key <<< "$line"
     
     echo "Processing $type $name from $current_file..."
     
@@ -135,7 +122,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     
     style_counter=1
     for i in $(seq "$start" "$end"); do
-        extract_tile "$style_counter" "$type" "$name" "$current_file" "$i"
+        extract_tile "$style_counter" "$type" "$name" "$current_file" "$i" "$tile_key"
         style_counter=$(($style_counter+1))
     done
     
@@ -149,16 +136,18 @@ SELECT
     type,
     name,
     COUNT(*) as count,
-    source
+    source,
+    tile_key
 FROM texture 
-GROUP BY type, name, source
+GROUP BY type, name, source, tile_key
 ORDER BY type, name;
 
 SELECT 
     COUNT(*) as total_textures,
     COUNT(DISTINCT type) as unique_types,
     COUNT(DISTINCT name) as unique_names,
-    COUNT(DISTINCT source) as source_files
+    COUNT(DISTINCT source) as source_files,
+    COUNT(DISTINCT tile_key) as unique_tiles
 FROM texture;
 END_SQL
 
