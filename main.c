@@ -15,10 +15,15 @@ typedef struct Edge {
     Texture2D edges[12];
 } Edge;
 
-typedef struct {
+typedef struct NeighborInfo {
     int tileKey;
     int priority;
 } NeighborInfo;
+
+typedef struct EdgeTextureInfo {
+    Texture2D texture;
+    int priority;
+} EdgeTextureInfo;
 
 typedef struct Tile {
     int tileKey;
@@ -296,6 +301,7 @@ void loadMap(sqlite3 *db, const char *table) {
     // Create map grid
     if (sqlite3_prepare_v2(db, mapQuery, -1, &mapStmt, NULL) == SQLITE_OK) {
         memset(currentMap.grid, 0, sizeof(currentMap.grid));
+        memset(currentMap.edges, 0, sizeof(currentMap.edges));
         while (sqlite3_step(mapStmt) == SQLITE_ROW) {
             int x = sqlite3_column_int(mapStmt, 0);
             int y = sqlite3_column_int(mapStmt, 1);
@@ -469,79 +475,6 @@ int coordsToArray(WorldCoords coords, int coordArray[][2]) {
     }
 }
 
-// Command mode functions
-void parseCommand(Tile tileTypes[], sqlite3 *db) {
-    if (strncmp(command, ":tile ", 6) == 0) {
-        char *tileKeyStr = command +6;
-        char *endptr;
-        long tileKey = strtol(tileKeyStr, &endptr, 10);
-        if (*endptr == '\0') {
-            if (tileKey >= 0 && tileKey <= maxTileKey && tileTypes[tileKey].tileKey == tileKey) {
-                activeTileKey = (int)tileKey;
-                printf("Active tile set to %d\n", activeTileKey);
-            } else {
-                printf("Tile key out of range\n");
-            }
-        } else {
-            printf("Invalid tile key\n");
-        }
-    } else if (strncmp(command, ":load ", 6) == 0) {
-        char *table = &command[6];
-        loadMap(db, table);
-        printf("Map loaded: %s\n", table);
-    } else if (strncmp(command, ":save ", 6) == 0) {
-        char *table = &command[6];
-        saveMap(db, table);
-        printf("Map saved: %s\n", table);
-    } else {
-        printf("Command not recognized\n");
-    }
-}
-
-void handleCommandMode(char *command, unsigned int *commandIndex, bool *inCommandMode, int screenHeight, int screenWidth, Tile tileTypes[], sqlite3 *db) {
-
-    // Command mode entry
-    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
-        if (IsKeyPressed(KEY_SEMICOLON)) {
-            printf("Entering command mode\n");
-            *inCommandMode = true;
-            *commandIndex = 0;
-            memset(command, 0, 256);
-        }
-    }
-
-    if (*inCommandMode) {
-        // Handle character input
-        int key = GetCharPressed();
-        while (key > 0) { // Process all queued characters
-            if (key >= 32 && key <= 126 && *commandIndex < 255) {
-                command[*commandIndex] = (char)key;
-                (*commandIndex)++;
-                command[*commandIndex] = '\0';
-            }
-            key = GetCharPressed(); // Get next character in queue
-        }
-
-        // Handle backspace
-        if (IsKeyPressed(KEY_BACKSPACE) && *commandIndex > 0) {
-            (*commandIndex)--;
-            command[*commandIndex] = '\0';
-        }
-
-        // Handle command execution or exit
-        if (IsKeyPressed(KEY_ENTER)) {
-            printf("Command entered: %s\n", command);
-            parseCommand(tileTypes, db);
-            *inCommandMode = false;
-        } else if (IsKeyPressed(KEY_ESCAPE)) {
-            *inCommandMode = false;
-        }
-
-        DrawRectangle(0, screenHeight - 30, screenWidth, 30, DARKGRAY);
-        DrawText(command, 10, screenHeight - 25, 20, RAYWHITE);
-    }
-}
-
 // Edge placement functions
 void markEdge(NeighborInfo* edgeNumbers, int edgeIndex, NeighborInfo neighbor) {
     edgeNumbers[edgeIndex] = neighbor;
@@ -577,6 +510,13 @@ Texture2D getEdge(Edge *edgeTypes, int countEdges, int tileKey, int edgeNumber) 
             return edgeTypes[i].edges[edgeNumber];
         }
     }
+}
+
+// Comparison function for qsort
+int compareEdgeTextures(const void *a, const void *b) {
+    const EdgeTextureInfo *edgeA = (const EdgeTextureInfo *)a;
+    const EdgeTextureInfo *edgeB = (const EdgeTextureInfo *)b;
+    return edgeA->priority - edgeB->priority; // Ascending order
 }
 
 void getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[], Texture2D resultTextures[], int *textureCount) {
@@ -628,19 +568,37 @@ void getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[],
     processDiagonal(edgeNumbers, neighbors, visitedTiles, 7, 2, 1); // Southeast
 
     // Populate result textures
+    EdgeTextureInfo edgeTextureInfoArray[12];
+    int actualCount = 0;
+
     Texture2D edgeTexture = (Texture2D){0};
     for (int i = 0; i < 12; i++) {
         if (edgeNumbers[i].tileKey != 0) {
             printf("Edge texture applied for map coord (%d,%d):\n", x, y);
-            printf("Tile number: %d Tile key: %d ", i,  edgeNumbers[i].tileKey);
+            printf("Edge number: %d Tile key: %d Priority: %d\n", i,  edgeNumbers[i].tileKey, edgeNumbers[i].priority);
 
-            edgeTexture = getEdge(edgeTypes, countEdges, edgeNumbers[i].tileKey, i);
-            resultTextures[(*textureCount)++] = edgeTexture;
+            Texture2D edgeTexture = getEdge(edgeTypes, countEdges, edgeNumbers[i].tileKey, i);
+            edgeTextureInfoArray[actualCount].texture = edgeTexture;
+            edgeTextureInfoArray[actualCount].priority = edgeNumbers[i].priority;
+            actualCount++;
+
         }
     }
+
+    // Sort edgeTextureInfoArray by priority in descending order
+    qsort(edgeTextureInfoArray, actualCount, sizeof(EdgeTextureInfo), compareEdgeTextures);
+
+    // Extract sorted textures back into resultTextures
+    for (int i = 0; i < actualCount; i++) {
+        resultTextures[i] = edgeTextureInfoArray[i].texture;
+    }
+
+    // Update textureCount
+    *textureCount = actualCount;
+
 }
 
-void computeMapEdges(int edgeGrid[][2], int edgeGridCount, Map* map, Tile tileTypes[], Edge edgeTypes[]) {
+void computeEdges(int edgeGrid[][2], int edgeGridCount, Map* map, Tile tileTypes[], Edge edgeTypes[]) {
 
     for (int i = 0; i < edgeGridCount; i++) {
         int x = edgeGrid[i][0];
@@ -665,6 +623,20 @@ void computeMapEdges(int edgeGrid[][2], int edgeGridCount, Map* map, Tile tileTy
         }
         map->edgeCount[x][y] = textureCount;
     }
+}
+
+void computeMapEdges(Tile tileTypes[], Edge edgeTypes[]) {
+    //Compute edges
+    int edgeGrid[GRID_SIZE*GRID_SIZE][2] = {0};
+    int edgeGridCount = 0;
+    for (int x = 0; x < GRID_SIZE; x++) {
+        for (int y = 0; y < GRID_SIZE; y++) {
+            edgeGrid[edgeGridCount][0] = x;
+            edgeGrid[edgeGridCount][1] = y;
+            edgeGridCount++;
+        }
+    }
+    computeEdges(edgeGrid, edgeGridCount, &currentMap, tileTypes, edgeTypes);
 }
 
 bool visitedCheck(int visitedTiles[][2], int visitedCount, int x, int y){
@@ -715,6 +687,80 @@ void calculateEdgeGrid(int placedTiles[][2], int placedCount, int visitedTiles[]
                 (*visitedCount)++;
             }
         }
+    }
+}
+
+// Command mode functions
+void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db) {
+    if (strncmp(command, ":tile ", 6) == 0) {
+        char *tileKeyStr = command +6;
+        char *endptr;
+        long tileKey = strtol(tileKeyStr, &endptr, 10);
+        if (*endptr == '\0') {
+            if (tileKey >= 0 && tileKey <= maxTileKey && tileTypes[tileKey].tileKey == tileKey) {
+                activeTileKey = (int)tileKey;
+                printf("Active tile set to %d\n", activeTileKey);
+            } else {
+                printf("Tile key out of range\n");
+            }
+        } else {
+            printf("Invalid tile key\n");
+        }
+    } else if (strncmp(command, ":load ", 6) == 0) {
+        char *table = &command[6];
+        loadMap(db, table);
+        computeMapEdges(tileTypes, edgeTypes);
+        printf("Map loaded: %s\n", table);
+    } else if (strncmp(command, ":save ", 6) == 0) {
+        char *table = &command[6];
+        saveMap(db, table);
+        printf("Map saved: %s\n", table);
+    } else {
+        printf("Command not recognized\n");
+    }
+}
+
+void handleCommandMode(char *command, unsigned int *commandIndex, bool *inCommandMode, int screenHeight, int screenWidth, Tile tileTypes[], Edge edgeTypes[], sqlite3 *db) {
+
+    // Command mode entry
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+        if (IsKeyPressed(KEY_SEMICOLON)) {
+            printf("Entering command mode\n");
+            *inCommandMode = true;
+            *commandIndex = 0;
+            memset(command, 0, 256);
+        }
+    }
+
+    if (*inCommandMode) {
+        // Handle character input
+        int key = GetCharPressed();
+        while (key > 0) { // Process all queued characters
+            if (key >= 32 && key <= 126 && *commandIndex < 255) {
+                command[*commandIndex] = (char)key;
+                (*commandIndex)++;
+                command[*commandIndex] = '\0';
+            }
+            key = GetCharPressed(); // Get next character in queue
+        }
+
+        // Handle backspace
+        if (IsKeyPressed(KEY_BACKSPACE) && *commandIndex > 0) {
+            (*commandIndex)--;
+            command[*commandIndex] = '\0';
+        }
+
+        // Handle command execution or exit
+        if (IsKeyPressed(KEY_ENTER)) {
+            printf("Command entered: %s\n", command);
+            parseCommand(tileTypes, edgeTypes, db);
+            *inCommandMode = false;
+        } else if (IsKeyPressed(KEY_ESCAPE)) {
+            *inCommandMode = false;
+        }
+
+        DrawRectangle(0, screenHeight - 30, screenWidth, 30, DARKGRAY);
+        DrawText(command, 10, screenHeight - 25, 20, RAYWHITE);
     }
 }
 
@@ -792,6 +838,7 @@ int main() {
     // Load textures
     Tile* tileTypes = loadTiles(db);
     Edge* edgeTypes = loadEdges(db);
+    computeMapEdges(tileTypes, edgeTypes);
 
     // Window state
     SetWindowState(FLAG_WINDOW_RESIZABLE);  // Enable window resizing
@@ -814,18 +861,6 @@ int main() {
     bool isDrawing = false;
     Vector2 startPos = {0};
     Vector2 mousePos;
-
-    //Compute edges
-    int edgeGrid[GRID_SIZE*GRID_SIZE][2] = {0};
-    int edgeGridCount = 0;
-    for (int x = 0; x < GRID_SIZE; x++) {
-        for (int y = 0; y < GRID_SIZE; y++) {
-            edgeGrid[edgeGridCount][0] = x;
-            edgeGrid[edgeGridCount][1] = y;
-            edgeGridCount++;
-        }
-    }
-    computeMapEdges(edgeGrid, edgeGridCount, &currentMap, tileTypes, edgeTypes);
 
     // Event loop
     while (!WindowShouldClose()) {
@@ -921,7 +956,7 @@ int main() {
 
             // Texture updates
             applyTiles(&currentMap, coords, activeTileKey);
-            computeMapEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
+            computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
 
             printf("Drawing released with range ((%d,%d),(%d,%d))\n", 
                    coords.startX, coords.endX, coords.startY, coords.endY);
@@ -932,7 +967,7 @@ int main() {
 
         // Handle command mode
         handleCommandMode(command, &commandIndex, &inCommandMode, windowState.height, 
-                         windowState.width, tileTypes, db);
+                         windowState.width, tileTypes, edgeTypes, db);
 
         EndDrawing();
     }
