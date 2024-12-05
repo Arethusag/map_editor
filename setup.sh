@@ -73,7 +73,7 @@ generate_color() {
     R=$(printf "%02X" $((255))) 
     G=$(printf "%02X" $((0)))
     B=$(printf "%02X" $((255)))
-    A="FF"  # Fixed alpha value of 255 (fully opaque)
+    A="00"  # Fixed alpha value of 0 (fully transparent)
     echo "0x${R}${G}${B}${A}"
 }
 

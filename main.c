@@ -31,7 +31,8 @@ typedef struct Tile {
 typedef struct Map {
     const char *name;
     int grid[GRID_SIZE][GRID_SIZE];
-    Texture2D edges[GRID_SIZE][GRID_SIZE];
+    Texture2D edges[GRID_SIZE][GRID_SIZE][12];
+    int edgeCount[GRID_SIZE][GRID_SIZE];
 } Map;
 
 typedef struct WorldCoords {
@@ -61,11 +62,11 @@ int countEdges;
 Map currentMap;
 sqlite3 *db;
 Camera2D camera = {0};
+Color transparencyKey = {255, 0, 255, 255};
 
 // Database functions
 Edge* loadEdges(sqlite3 *db) {
     
-
     // Database Initialization
     if (sqlite3_open("test.db", &db) == SQLITE_OK) {
         printf("Database opened successfully.\n");
@@ -145,8 +146,16 @@ Edge* loadEdges(sqlite3 *db) {
                     blobData[offset + 2], // B
                     blobData[offset + 3]  // A
                 };
+
+                // Apply transparency key
+                if (pixelData[i].r == transparencyKey.r &&
+                    pixelData[i].g == transparencyKey.g &&
+                    pixelData[i].b == transparencyKey.b &&
+                    pixelData[i].a == transparencyKey.a) {
+                    pixelData[i].a = 0; // Set alpha to 0
+                }
             }
-         
+
             // Initialize the Image for the tile
             Image img = {
                 .data = pixelData,             // Directly assign the pixel data
@@ -570,9 +579,7 @@ Texture2D getEdge(Edge *edgeTypes, int countEdges, int tileKey, int edgeNumber) 
     }
 }
 
-Texture2D getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[]) {
-    Texture2D resultTextures[12];
-    int textureCount = 0; // Keeps track of populated textures
+void getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[], Texture2D resultTextures[], int *textureCount) {
 
     const int neighborCoords[8][2] = {
         {x, y - 1}, {x + 1, y}, {x, y + 1}, {x - 1, y}, // Cardinal
@@ -628,11 +635,9 @@ Texture2D getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTyp
             printf("Tile number: %d Tile key: %d ", i,  edgeNumbers[i].tileKey);
 
             edgeTexture = getEdge(edgeTypes, countEdges, edgeNumbers[i].tileKey, i);
-            resultTextures[(textureCount)++] = edgeTexture;
+            resultTextures[(*textureCount)++] = edgeTexture;
         }
     }
-
-    return edgeTexture;
 }
 
 void computeMapEdges(int edgeGrid[][2], int edgeGridCount, Map* map, Tile tileTypes[], Edge edgeTypes[]) {
@@ -642,17 +647,24 @@ void computeMapEdges(int edgeGrid[][2], int edgeGridCount, Map* map, Tile tileTy
         int y = edgeGrid[i][1];
 
         // Initialize to empty texture
-        map->edges[x][y] = (Texture2D){0};
+        for (int j = 0; j < 12; j++) {
+            map->edges[x][y][j] = (Texture2D){0};
+        }
+        
+        Texture2D resultTextures[12];
+        int textureCount = 0; // Keeps track of populated textures
         
         // Compute edges for this tile
-        Texture2D edgeTexture = getEdgeTextures(map, x, y, tileTypes, edgeTypes);
+        getEdgeTextures(map, x, y, tileTypes, edgeTypes, resultTextures, &textureCount);
         
         // If a valid edge texture is found, store it
-        if (edgeTexture.id != 0) {
-            map->edges[x][y] = edgeTexture;
+        for (int j = 0; j < textureCount; j++) {
+            if (resultTextures[j].id != 0) {
+                map->edges[x][y][j] = resultTextures[j];
+            }
         }
+        map->edgeCount[x][y] = textureCount;
     }
-    printf("Completed computing map edges\n");
 }
 
 bool visitedCheck(int visitedTiles[][2], int visitedCount, int x, int y){
@@ -755,10 +767,11 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera, int screenWidt
             DrawTexture(tileTexture, pos.x, pos.y, WHITE);
 
             // Draw the edge for each grid cell
-            Texture2D edgeTexture = map->edges[x][y];
-            DrawTexture(edgeTexture, pos.x, pos.y, WHITE);
-
-
+            int edgeCount = map->edgeCount[x][y];
+            for (int i = 0; i < edgeCount; i++) {
+                Texture2D edgeTexture = map->edges[x][y][i];
+                DrawTexture(edgeTexture, pos.x, pos.y, WHITE);
+            }
         }
     }
 }
@@ -925,6 +938,7 @@ int main() {
     }
 
     free(tileTypes);
+    free(edgeTypes);
     CloseWindow();
     return 0;
 }
