@@ -40,7 +40,6 @@ file and produces a copy with a 32x32 pixel grid overlay with cell numbering.
 
 ## Roadmap
 
-- Feature: implement texture stacking and transparency for default RGB(255,0,255) tiles.
 - Feature: implement painter style preview and placement.
 - Feature: implement random style variations for ground tiles.
 - Feature: undo/redo

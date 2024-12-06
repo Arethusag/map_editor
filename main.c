@@ -475,13 +475,19 @@ int coordsToArray(WorldCoords coords, int coordArray[][2]) {
     }
 }
 
+int getBoundingBoxSize(WorldCoords coords) {
+    int sizeX = (coords.startX <= coords.endX ? coords.endX - coords.startX : coords.startX - coords.endX) + 1;
+    int sizeY = (coords.startY <= coords.endY ? coords.endY - coords.startY : coords.startY - coords.endY) + 1;
+    return sizeX * sizeY;
+}
+
 // Edge placement functions
 void markEdge(NeighborInfo* edgeNumbers, int edgeIndex, NeighborInfo neighbor) {
     edgeNumbers[edgeIndex] = neighbor;
 }
 
 void processCorner(NeighborInfo* edgeNumbers, NeighborInfo* neighbors, bool* visitedTiles, int index, int adjacent1, int adjacent2) {
-    int opposite1 = (adjacent1 + 2) % 4; // Calculate opposites
+   int opposite1 = (adjacent1 + 2) % 4; // Calculate opposites
     int opposite2 = (adjacent2 + 2) % 4;
 
     if (neighbors[adjacent1].tileKey == neighbors[adjacent2].tileKey &&
@@ -512,7 +518,6 @@ Texture2D getEdge(Edge *edgeTypes, int countEdges, int tileKey, int edgeNumber) 
     }
 }
 
-// Comparison function for qsort
 int compareEdgeTextures(const void *a, const void *b) {
     const EdgeTextureInfo *edgeA = (const EdgeTextureInfo *)a;
     const EdgeTextureInfo *edgeB = (const EdgeTextureInfo *)b;
@@ -783,17 +788,14 @@ void drawPreview(WorldCoords coords, Tile tileTypes[], int activeTileKey) {
     }
 }
 
-void applyTiles(Map *map, WorldCoords coords, int activeTileKey) {
-    int minX = (coords.startX <= coords.endX) ? coords.startX : coords.endX;
-    int maxX = (coords.startX <= coords.endX) ? coords.endX : coords.startX;
-    int minY = (coords.startY <= coords.endY) ? coords.startY : coords.endY;
-    int maxY = (coords.startY <= coords.endY) ? coords.endY : coords.startY;
+void applyTiles(Map *map, int placedTiles[][2], int placedCount, int activeTileKey) {
 
-    for (int x = minX; x <= maxX; x++) {
-        for (int y = minY; y <= maxY; y++) {
-            map->grid[x][y] = activeTileKey;
+    for (int i = 0; i < placedCount; i++) {
+        int x = placedTiles[i][0];
+        int y = placedTiles[i][1];
 
-        }
+        map->grid[x][y] = activeTileKey;
+
     }
 }
 
@@ -922,7 +924,7 @@ int main() {
         drawExistingMap(&currentMap, tileTypes, camera, windowState.width, windowState.height);
 
         // Handle mouse input and drawing
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && IsKeyDown(KEY_LEFT_SHIFT)) {
             startPos = mousePos;
             isDrawing = true;
         }
@@ -943,9 +945,7 @@ int main() {
             WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
 
             // Calculate the size of the array based on the bounding box
-            int sizeX = (coords.startX <= coords.endX ? coords.endX - coords.startX : coords.startX - coords.endX) + 1;
-            int sizeY = (coords.startY <= coords.endY ? coords.endY - coords.startY : coords.startY - coords.endY) + 1;
-            int coordArraySize = sizeX * sizeY;
+            int coordArraySize = getBoundingBoxSize(coords);
             int coordArray[coordArraySize][2];
             coordsToArray(coords, coordArray);
             
@@ -955,7 +955,7 @@ int main() {
             calculateEdgeGrid(coordArray, coordArraySize, visitedTiles, &visitedCount);
 
             // Texture updates
-            applyTiles(&currentMap, coords, activeTileKey);
+            applyTiles(&currentMap, coordArray, coordArraySize, activeTileKey);
             computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
 
             printf("Drawing released with range ((%d,%d),(%d,%d))\n", 
