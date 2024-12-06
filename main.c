@@ -576,7 +576,6 @@ void getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[],
     EdgeTextureInfo edgeTextureInfoArray[12];
     int actualCount = 0;
 
-    Texture2D edgeTexture = (Texture2D){0};
     for (int i = 0; i < 12; i++) {
         if (edgeNumbers[i].tileKey != 0) {
             printf("Edge texture applied for map coord (%d,%d):\n", x, y);
@@ -770,21 +769,18 @@ void handleCommandMode(char *command, unsigned int *commandIndex, bool *inComman
 }
 
 // Draw update functions
-void drawPreview(WorldCoords coords, Tile tileTypes[], int activeTileKey) {
-    int minX = (coords.startX <= coords.endX) ? coords.startX : coords.endX;
-    int maxX = (coords.startX <= coords.endX) ? coords.endX : coords.startX;
-    int minY = (coords.startY <= coords.endY) ? coords.startY : coords.endY;
-    int maxY = (coords.startY <= coords.endY) ? coords.endY : coords.startY;
+void drawPreview(int coordArray[][2], int coordArraySize, Tile tileTypes[], int activeTileKey) {
 
-    for (int x = minX; x <= maxX; x++) {
-        for (int y = minY; y <= maxY; y++) {
+    for (int i = 0; i <= coordArraySize; i++) {
+        int x = coordArray[i][0];
+        int y = coordArray[i][1];
 
-            // Draw the texture
-            Texture2D tileTexture = tileTypes[activeTileKey].tex;
-            Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
-            DrawTexture(tileTexture, pos.x, pos.y, WHITE);
-            DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, RED);
-        }
+        // Draw the texture
+        Texture2D tileTexture = tileTypes[activeTileKey].tex;
+        Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
+        DrawTexture(tileTexture, pos.x, pos.y, WHITE);
+        DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, RED);
+        
     }
 }
 
@@ -931,7 +927,13 @@ int main() {
 
         if (isDrawing) {
             WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
-            drawPreview(coords, tileTypes, activeTileKey);
+
+            // Calculate the size of the array based on the bounding box
+            int coordArraySize = getBoundingBoxSize(coords);
+            int coordArray[coordArraySize][2];
+            coordsToArray(coords, coordArray);
+
+            drawPreview(coordArray, coordArraySize, tileTypes, activeTileKey);
         } else {
             // Draw cursor preview
             WorldCoords coords = getWorldGridCoords(mousePos, mousePos, camera);
