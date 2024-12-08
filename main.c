@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // Definitions
 #define TILE_SIZE 32
@@ -37,7 +38,7 @@ typedef struct Tile {
 
 typedef struct Map {
     const char *name;
-    int grid[GRID_SIZE][GRID_SIZE];
+    int grid[GRID_SIZE][GRID_SIZE][2];
     Texture2D edges[GRID_SIZE][GRID_SIZE][12];
     int edgeCount[GRID_SIZE][GRID_SIZE];
 } Map;
@@ -324,7 +325,7 @@ void loadMap(sqlite3 *db, const char *table) {
     char mapQuery[256];
 
     // Format Map Query
-    snprintf(mapQuery, sizeof(mapQuery), "SELECT x, y, tile_key FROM %s;", table);
+    snprintf(mapQuery, sizeof(mapQuery), "SELECT x, y, tile_key, tile_style FROM %s;", table);
     sqlite3_stmt* mapStmt;
 
     // Create map grid
@@ -335,7 +336,9 @@ void loadMap(sqlite3 *db, const char *table) {
             int x = sqlite3_column_int(mapStmt, 0);
             int y = sqlite3_column_int(mapStmt, 1);
             int tileKey = sqlite3_column_int(mapStmt, 2);
-            currentMap.grid[x][y] = tileKey;
+            int tileStyle = sqlite3_column_int(mapStmt,3);
+            currentMap.grid[x][y][0] = tileKey;
+            currentMap.grid[x][y][1] = tileStyle;
         }
     } else {
         printf("Error preparing SQL query: %s\n", sqlite3_errmsg(db));
@@ -369,9 +372,10 @@ void saveMap(sqlite3 *db, char *table) {
             "CREATE TABLE IF NOT EXISTS %s("
             "x INTEGER NOT NULL,"
             "y INTEGER NOT NULL,"
-            "tile_key INTEGER NOT NULL);", table);
+            "tile_key INTEGER NOT NULL,"
+            "tile_style INTEGER NOT NULL);", table);
     snprintf(insertQuery, sizeof(insertQuery),
-            "INSERT INTO %s (x, y, tile_key) VALUES (?, ?, ?);", table);
+            "INSERT INTO %s (x, y, tile_key, tile_style) VALUES (?, ?, ?);", table);
 
     // Execute DROP TABLE
     if (sqlite3_prepare_v2(db, dropQuery, -1, &dropStmt, NULL) == SQLITE_OK) {
@@ -393,11 +397,13 @@ void saveMap(sqlite3 *db, char *table) {
     if (sqlite3_prepare_v2(db, insertQuery, -1, &insertStmt, NULL) == SQLITE_OK) {
         for (int x = 0; x < GRID_SIZE; x++) {
             for (int y = 0; y < GRID_SIZE; y++) {
-                if (currentMap.grid[x][y] != 0) {
-                    int tileKey = currentMap.grid[x][y]; 
+                if (currentMap.grid[x][y][0] != 0) {
+                    int tileKey = currentMap.grid[x][y][0]; 
+                    int tileStyle = currentMap.grid[x][y][1]; 
                     sqlite3_bind_int(insertStmt, 1, x);         // Bind x
                     sqlite3_bind_int(insertStmt, 2, y);         // Bind y
                     sqlite3_bind_int(insertStmt, 3, tileKey);   // Bind tile_key
+                    sqlite3_bind_int(insertStmt, 4, tileStyle);   // Bind tile_style
                     sqlite3_step(insertStmt);
                     sqlite3_reset(insertStmt); 
                     sqlite3_clear_bindings(insertStmt);
@@ -510,6 +516,16 @@ int getBoundingBoxSize(WorldCoords coords) {
     return sizeX * sizeY;
 }
 
+int getRandTileStyle(int tileKey, Tile *tileTypes) {
+    int texCount = tileTypes[tileKey].texCount;
+    if (texCount == 0) {
+        return 0;
+    } else {
+    int randStyle = rand() % (texCount);
+    return randStyle;
+    }
+}
+
 // Edge placement functions
 void markEdge(NeighborInfo* edgeNumbers, int edgeIndex, NeighborInfo neighbor) {
     edgeNumbers[edgeIndex] = neighbor;
@@ -561,7 +577,7 @@ void getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[],
     NeighborInfo edgeNumbers[12] = {0};
     bool visitedTiles[4] = {false};
 
-    int currentTileKey = map->grid[x][y];
+    int currentTileKey = map->grid[x][y][0];
 
     // Populate neighbors
     for (int i = 0; i < 8; i++) {
@@ -569,7 +585,7 @@ void getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[],
         int ny = neighborCoords[i][1];
 
         if (nx >= 0 && nx < GRID_SIZE && ny >= 0 && ny < GRID_SIZE) {
-            int neighborKey = map->grid[nx][ny];
+            int neighborKey = map->grid[nx][ny][0];
             if (tileTypes[neighborKey].edgeIndicator == 1 &&
                 tileTypes[neighborKey].edgePriority > tileTypes[currentTileKey].edgePriority) {
                 neighbors[i].tileKey = neighborKey;
@@ -683,7 +699,7 @@ bool visitedCheck(int visitedTiles[][2], int visitedCount, int x, int y){
     }
 }
 
-void calculateEdgeGrid(int placedTiles[][2], int placedCount, int visitedTiles[][2], int *visitedCount) {
+void calculateEdgeGrid(int placedTiles[][3], int placedCount, int visitedTiles[][2], int *visitedCount) {
 
     for (int i = 0; i < placedCount; i++) {
         int x = placedTiles[i][0];
@@ -793,14 +809,15 @@ void handleCommandMode(char *command, unsigned int *commandIndex, bool *inComman
 }
 
 // Draw update functions
-void drawPreview(int coordArray[][2], int coordArraySize, Tile tileTypes[], int activeTileKey) {
+void drawPreview(int drawnTiles[][3], int drawnTilesCount, Tile tileTypes[], int activeTileKey) {
 
-    for (int i = 0; i < coordArraySize; i++) {
-        int x = coordArray[i][0];
-        int y = coordArray[i][1];
+    for (int i = 0; i < drawnTilesCount; i++) {
+        int x = drawnTiles[i][0];
+        int y = drawnTiles[i][1];
+        int style = drawnTiles[i][2];
 
         // Draw the texture
-        Texture2D tileTexture = tileTypes[activeTileKey].tex[0];
+        Texture2D tileTexture = tileTypes[activeTileKey].tex[style];
         Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
         DrawTexture(tileTexture, pos.x, pos.y, WHITE);
         DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, RED);
@@ -808,13 +825,15 @@ void drawPreview(int coordArray[][2], int coordArraySize, Tile tileTypes[], int 
     }
 }
 
-void applyTiles(Map *map, int placedTiles[][2], int placedCount, int activeTileKey) {
+void applyTiles(Map *map, int placedTiles[][3], int placedCount, int activeTileKey) {
 
     for (int i = 0; i < placedCount; i++) {
         int x = placedTiles[i][0];
         int y = placedTiles[i][1];
+        int style = placedTiles[i][2];
 
-        map->grid[x][y] = activeTileKey;
+        map->grid[x][y][0] = activeTileKey;
+        map->grid[x][y][1] = style;
 
     }
 }
@@ -827,10 +846,11 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera, int screenWidt
     // Only draw tiles within the visible bounds
     for (int x = bounds.startX; x <= bounds.endX; x++) {
         for (int y = bounds.startY; y <= bounds.endY; y++) {
-            int tileKey = map->grid[x][y];
+            int tileKey = map->grid[x][y][0];
+            int tileStyle = map->grid[x][y][1];
             
             // Draw the ground tile for each grid cell
-            Texture2D tileTexture = tileTypes[tileKey].tex[0];
+            Texture2D tileTexture = tileTypes[tileKey].tex[tileStyle];
             Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
             DrawTexture(tileTexture, pos.x, pos.y, WHITE);
 
@@ -842,6 +862,59 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera, int screenWidt
             }
         }
     }
+}
+
+void updateDrawnTiles(int coordArray[][2], int coordArraySize, int drawnTiles[][3], int *drawnTilesCount, int activeTileKey, Tile *tileTypes) {
+
+    // Update drawn with all new tiles in array
+    for (int i = 0; i < coordArraySize; i++) {
+        int x = coordArray[i][0];
+        int y = coordArray[i][1];
+
+        int alreadyVisited = 0;
+        for (int j = 0; j < *drawnTilesCount; j++) {
+            if (drawnTiles[j][0] == x && drawnTiles[j][1] == y) {
+                alreadyVisited = 1;
+                break;
+            }
+        }
+          
+        if (!alreadyVisited) {
+           int style = getRandTileStyle(activeTileKey, tileTypes);
+           drawnTiles[*drawnTilesCount][0] = x;
+           drawnTiles[*drawnTilesCount][1] = y;
+           drawnTiles[*drawnTilesCount][2] = style;
+           (*drawnTilesCount)++;
+        }
+    }
+
+    // Remove old tiles from drawn if no longer in array
+    int newCount = 0;
+    for (int i = 0; i < *drawnTilesCount; i++) {
+        int x = drawnTiles[i][0];
+        int y = drawnTiles[i][1];
+        int style = drawnTiles[i][2];
+        int stillInArray = 0;
+
+        for (int j = 0; j < coordArraySize; j++) {
+            if (x == coordArray[j][0] && y == coordArray[j][1]) {
+                stillInArray = 1;
+                break;
+            }
+        }
+
+        if (stillInArray) {
+            // Keep the tile in drawnTiles
+            drawnTiles[newCount][0] = x;
+            drawnTiles[newCount][1] = y;
+            drawnTiles[newCount][2] = style;
+            newCount++;
+        }
+    }
+
+    // Update the drawnTilesCount to reflect the new size
+    *drawnTilesCount = newCount;
+
 }
 
 // Entry point
@@ -885,7 +958,7 @@ int main() {
 
 
     int drawnTilesCount = 0;
-    int drawnTiles [GRID_SIZE * GRID_SIZE][2];
+    int drawnTiles [GRID_SIZE * GRID_SIZE][3]; // 0=x; 1=y; 2=style
     Vector2 startPos = {0};
     Vector2 mousePos;
 
@@ -952,6 +1025,7 @@ int main() {
 
             // First Drawing mode. Hold Shift and drag box.
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && IsKeyDown(KEY_LEFT_SHIFT)) {
+            drawnTilesCount = 0;
             startPos = mousePos;
             isShiftDrawing = true;
 
@@ -970,17 +1044,29 @@ int main() {
             int coordArray[coordArraySize][2];
             coordsToArray(coords, coordArray);
 
-            drawPreview(coordArray, coordArraySize, tileTypes, activeTileKey);
+            updateDrawnTiles(coordArray, coordArraySize, drawnTiles, &drawnTilesCount, activeTileKey, tileTypes);
+            drawPreview(drawnTiles, drawnTilesCount, tileTypes, activeTileKey);
+
         } else if (isDrawing) {
             
             WorldCoords coords = getWorldGridCoords(mousePos, mousePos, camera);
             int x = coords.endX;
             int y = coords.endY;
 
-            if (!visitedCheck(drawnTiles, drawnTilesCount, x, y)) {
-               drawnTiles[drawnTilesCount][0] = x;
-               drawnTiles[drawnTilesCount][1] = y;
-               drawnTilesCount++;
+            int alreadyVisited = 0;
+            for (int j = 0; j < drawnTilesCount; j++) {
+                if (drawnTiles[j][0] == x && drawnTiles[j][1] == y) {
+                    alreadyVisited = 1;
+                    break;
+                }
+            }
+              
+            if (!alreadyVisited) {
+                int style = getRandTileStyle(activeTileKey, tileTypes);
+                drawnTiles[drawnTilesCount][0] = x;
+                drawnTiles[drawnTilesCount][1] = y;
+                drawnTiles[drawnTilesCount][2] = style;
+                drawnTilesCount++;
             }
 
             drawPreview(drawnTiles, drawnTilesCount, tileTypes, activeTileKey);
@@ -996,37 +1082,17 @@ int main() {
 
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
 
-            if (isShiftDrawing) {
-                WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
+            // Get neighbors to placement
+            int visitedTiles[GRID_SIZE * GRID_SIZE / 2][2];
+            int visitedCount = 0;
+            calculateEdgeGrid(drawnTiles, drawnTilesCount, visitedTiles, &visitedCount);
 
-                // Calculate the size of the array based on the bounding box
-                int coordArraySize = getBoundingBoxSize(coords);
-                int coordArray[coordArraySize][2];
-                coordsToArray(coords, coordArray);
-                
-                // Get neighbors to placement
-                int visitedTiles[GRID_SIZE * GRID_SIZE / 2][2];
-                int visitedCount = 0;
-                calculateEdgeGrid(coordArray, coordArraySize, visitedTiles, &visitedCount);
 
-                // Texture updates
-                applyTiles(&currentMap, coordArray, coordArraySize, activeTileKey);
-                computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
-                isShiftDrawing = false;
-            } else if (isDrawing) {
+            // Texture updates
+            applyTiles(&currentMap, drawnTiles, drawnTilesCount, activeTileKey);
+            computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
+            memset(drawnTiles, 0, sizeof(drawnTiles));
 
-                // Get neighbors to placement
-                int visitedTiles[GRID_SIZE * GRID_SIZE / 2][2];
-                int visitedCount = 0;
-                calculateEdgeGrid(drawnTiles, drawnTilesCount, visitedTiles, &visitedCount);
-
-                // Texture updates
-                applyTiles(&currentMap, drawnTiles, drawnTilesCount, activeTileKey);
-                computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
-                memset(drawnTiles, 0, sizeof(drawnTiles));
-                isDrawing = false;
-
-            }
             isShiftDrawing = false;
             isDrawing = false;
         }

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS map(
     x INTEGER NOT NULL, 
     y INTEGER NOT NULL, 
     tile_key INTEGER NOT NULL,
+    tile_style INTEGER NOT NULL,
     FOREIGN KEY (tile_key) REFERENCES tile(tile_key)
 );
 
@@ -17,15 +18,15 @@ END_SQL
 # Insert default tile 0 into all map grid cells
 for ((x=0; x<GRID_SIZE; x++)); do
     for ((y=0; y<GRID_SIZE; y++)); do
-        sqlite3 "$DB_FILE" "INSERT INTO map (x, y, tile_key) VALUES ($x,$y,$((0)));"
+        sqlite3 "$DB_FILE" "INSERT INTO map (x, y, tile_key, tile_style) VALUES ($x,$y,$((0)),$((0)));"
     done
 done
 
 # Place 4 grass tiles
-sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1 WHERE x = 3 AND y = 3;"
-sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1 WHERE x = 4 AND y = 4;"
-sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1 WHERE x = 10 AND y = 10;"
-sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1 WHERE x = 9 AND y = 11;"
+sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 0 WHERE x = 3 AND y = 3;"
+sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 1 WHERE x = 4 AND y = 4;"
+sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 3 WHERE x = 10 AND y = 10;"
+sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 17 WHERE x = 9 AND y = 11;"
 
 # Count total number of tiles
 sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM map;"
