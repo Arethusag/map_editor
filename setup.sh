@@ -37,18 +37,16 @@ CREATE TABLE IF NOT EXISTS tile(
     tile_key INTEGER PRIMARY KEY,
     walkable INTEGER DEFAULT 1 CHECK(walkable IN (0,1)),
     description STRING NOT NULL,
-    texture_key INTEGER NOT NULL,
     edge_indicator INTEGER NOT NULL CHECK(edge_indicator IN (0, 1)),
-    edge_priority INTEGER NOT NULL CHECK(edge_priority IN (1, 2, 3, 4)),
-    FOREIGN KEY (texture_key) REFERENCES texture(texture_key)
+    edge_priority INTEGER NOT NULL CHECK(edge_priority IN (1, 2, 3, 4))
 ) WITHOUT rowid;
-INSERT INTO tile (tile_key, walkable, description, texture_key, edge_indicator, edge_priority)
-    VALUES (0, 0, 'default', 0,  0, 1),
-           (1, 0, 'grass'  , 1,  1, 4),
-           (2, 0, 'water'  , 41, 0, 1),
-           (3, 0, 'dirt'   , 28, 1, 3),
-           (4, 0, 'rock'   , 21, 0, 1),
-           (5, 0, 'stone'  , 36, 1, 2)
+INSERT INTO tile (tile_key, walkable, description, edge_indicator, edge_priority)
+    VALUES (0, 0, 'default', 0, 1),
+           (1, 0, 'grass'  , 1, 4),
+           (2, 0, 'water'  , 0, 1),
+           (3, 0, 'dirt'   , 1, 3),
+           (4, 0, 'rock'   , 0, 1),
+           (5, 0, 'stone'  , 1, 2) 
 ; 
 
 END_SQL
@@ -63,7 +61,8 @@ CREATE TABLE IF NOT EXISTS texture(
     style INTEGER NOT NULL,
     source TEXT NOT NULL,
     tile_key INTEGER NOT NULL,
-    data BLOB
+    data BLOB,
+    FOREIGN KEY (tile_key) REFERENCES tile(tile_key)
 );
 END_SQL
 

@@ -8,6 +8,7 @@
 #define TILE_SIZE 32
 #define GRID_SIZE 16
 #define CAMERA_SPEED 300.0f
+#define MAX_TILE_VARIANTS 20
 
 // Structs
 typedef struct Edge {
@@ -28,7 +29,8 @@ typedef struct EdgeTextureInfo {
 typedef struct Tile {
     int tileKey;
     int walkable;
-    Texture2D tex;
+    Texture2D tex[MAX_TILE_VARIANTS];
+    int texCount;
     int edgePriority;
     int edgeIndicator;
 } Tile;
@@ -222,56 +224,83 @@ Tile* loadTiles(sqlite3 *db) {
     }
 
     // Load tile types from database
-    const char* tileQuery = "SELECT tile.tile_key, walkable, data, edge_priority, edge_indicator FROM tile "
-                            "LEFT JOIN texture ON tile.texture_key = texture.texture_key";
+    const char* tileQuery = "SELECT tile_key, walkable, edge_priority, edge_indicator FROM tile;";
     sqlite3_stmt* tileStmt;
     if (sqlite3_prepare_v2(db, tileQuery, -1, &tileStmt, NULL) == SQLITE_OK) {
         while (sqlite3_step(tileStmt) == SQLITE_ROW) {
             int tileKey = sqlite3_column_int(tileStmt, 0);
             int walkable = sqlite3_column_int(tileStmt, 1);
-            const unsigned char* blobData = sqlite3_column_blob(tileStmt, 2);
-            int blobSize = sqlite3_column_bytes(tileStmt, 2);
-            int edgePriority = sqlite3_column_int(tileStmt, 3);
-            int edgeIndicator = sqlite3_column_int(tileStmt, 4);
-
-            // Verify blob size matches expected size (32x32 pixels * 4 bytes per pixel)
-            if (blobSize != TILE_SIZE * TILE_SIZE * 4) {
-                printf("Error: Invalid blob size %d (expected %d)\n", 
-                       blobSize, TILE_SIZE * TILE_SIZE * 4);
-                continue;
-            }
-
-            // Create color array for the texture
-            Color pixelData[TILE_SIZE * TILE_SIZE];
-            
-            // Parse blob data into Color array
-            for (int i = 0; i < TILE_SIZE * TILE_SIZE; i++) {
-                // Each pixel is 4 bytes (RGBA)
-                int offset = i * 4;
-                pixelData[i] = (Color){
-                    blobData[offset],     // R
-                    blobData[offset + 1], // G
-                    blobData[offset + 2], // B
-                    blobData[offset + 3]  // A
-                };
-            }
-         
-            // Initialize the Image for the tile
-            Image img = {
-                .data = pixelData,             // Directly assign the pixel data
-                .width = TILE_SIZE,
-                .height = TILE_SIZE,
-                .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
-                .mipmaps = 1
-            };
-            Texture2D tex = LoadTextureFromImage(img);
+            int edgePriority = sqlite3_column_int(tileStmt, 2);
+            int edgeIndicator = sqlite3_column_int(tileStmt, 3);
 
             // Populate tile with color array
-            tileTypes[tileKey] = (Tile){ tileKey, walkable, tex, edgePriority, edgeIndicator};
+            Texture2D tex[MAX_TILE_VARIANTS] = {0};
+            int texCount = 0;
+            char tileKeyStr[20];
+            snprintf(tileKeyStr, sizeof(tileKeyStr), "%d", tileKey);
+            const char* texQuery = "SELECT data FROM texture WHERE tile_key = ? AND type = 'tile';";
+            sqlite3_stmt* texStmt;
+            if (sqlite3_prepare_v2(db, texQuery, -1, &texStmt, NULL) == SQLITE_OK) {
+                sqlite3_bind_text(texStmt, 1, tileKeyStr, -1, SQLITE_TRANSIENT);
+                while (sqlite3_step(texStmt) == SQLITE_ROW) {
+                    const unsigned char* blobData = sqlite3_column_blob(texStmt, 0);
+                    int blobSize = sqlite3_column_bytes(texStmt, 0);
+
+                    // Verify blob size matches expected size (32x32 pixels * 4 bytes per pixel)
+                    if (blobSize != TILE_SIZE * TILE_SIZE * 4) {
+                        printf("Error: Invalid blob size %d (expected %d)\n", 
+                               blobSize, TILE_SIZE * TILE_SIZE * 4);
+                        continue;
+                    }
+
+                    // Create color array for the texture
+                    Color pixelData[TILE_SIZE * TILE_SIZE];
+                    
+                    // Parse blob data into Color array
+                    for (int i = 0; i < TILE_SIZE * TILE_SIZE; i++) {
+                        // Each pixel is 4 bytes (RGBA)
+                        int offset = i * 4;
+                        pixelData[i] = (Color){
+                            blobData[offset],     // R
+                            blobData[offset + 1], // G
+                            blobData[offset + 2], // B
+                            blobData[offset + 3]  // A
+                        };
+                    }
+                 
+                    // Initialize the Image for the tile
+                    Image img = {
+                        .data = pixelData,             // Directly assign the pixel data
+                        .width = TILE_SIZE,
+                        .height = TILE_SIZE,
+                        .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+                        .mipmaps = 1
+                    };
+                    Texture2D loadedTex = LoadTextureFromImage(img);
+                    tex[texCount] = loadedTex;
+                    texCount++;
+
+                }
+            } else {
+                printf("Error preparing texture query: %s\n", sqlite3_errmsg(db));
+            }
+            sqlite3_finalize(texStmt);
+
+            tileTypes[tileKey] = (Tile){
+                .tileKey = tileKey,
+                .walkable = walkable,
+                .tex = {{0}},  // Initialize the array to zero
+                .texCount = texCount,
+                .edgePriority = edgePriority,
+                .edgeIndicator = edgeIndicator
+            };
+
+            // Explicitly copy the textures
+            memcpy(tileTypes[tileKey].tex, tex, sizeof(Texture2D) * texCount);
 
             printf("Tile %d created", tileKey);
-
         }
+
     } else {
         printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
     }
@@ -503,9 +532,6 @@ void processDiagonal(NeighborInfo* edgeNumbers, NeighborInfo* neighbors, bool* v
     if (neighbors[index].tileKey != 0 &&
         (!visitedTiles[adjacent1] || neighbors[index].priority > neighbors[adjacent1].priority) &&
         (!visitedTiles[adjacent2] || neighbors[index].priority > neighbors[adjacent2].priority)) {
-        printf("Processing diagonal neighbor  %d\n", index);
-        printf("Neighbor information: tileKey = %d, priority = %d\n", neighbors[index].tileKey, neighbors[index].priority);
-        printf("Marking edge at index %d\n", index);
         markEdge(edgeNumbers, index, neighbors[index]);
     }
 }
@@ -578,8 +604,6 @@ void getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[],
 
     for (int i = 0; i < 12; i++) {
         if (edgeNumbers[i].tileKey != 0) {
-            printf("Edge texture applied for map coord (%d,%d):\n", x, y);
-            printf("Edge number: %d Tile key: %d Priority: %d\n", i,  edgeNumbers[i].tileKey, edgeNumbers[i].priority);
 
             Texture2D edgeTexture = getEdge(edgeTypes, countEdges, edgeNumbers[i].tileKey, i);
             edgeTextureInfoArray[actualCount].texture = edgeTexture;
@@ -771,12 +795,12 @@ void handleCommandMode(char *command, unsigned int *commandIndex, bool *inComman
 // Draw update functions
 void drawPreview(int coordArray[][2], int coordArraySize, Tile tileTypes[], int activeTileKey) {
 
-    for (int i = 0; i <= coordArraySize; i++) {
+    for (int i = 0; i < coordArraySize; i++) {
         int x = coordArray[i][0];
         int y = coordArray[i][1];
 
         // Draw the texture
-        Texture2D tileTexture = tileTypes[activeTileKey].tex;
+        Texture2D tileTexture = tileTypes[activeTileKey].tex[0];
         Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
         DrawTexture(tileTexture, pos.x, pos.y, WHITE);
         DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, RED);
@@ -806,7 +830,7 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera, int screenWidt
             int tileKey = map->grid[x][y];
             
             // Draw the ground tile for each grid cell
-            Texture2D tileTexture = tileTypes[tileKey].tex;
+            Texture2D tileTexture = tileTypes[tileKey].tex[0];
             Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
             DrawTexture(tileTexture, pos.x, pos.y, WHITE);
 
@@ -856,7 +880,12 @@ int main() {
     cameraState.lastMousePosition = (Vector2){0, 0};
 
     // Drawing state
-    bool isDrawing = false;
+    bool isShiftDrawing = false; //Box mode
+    bool isDrawing = false; // Painter mode
+
+
+    int drawnTilesCount = 0;
+    int drawnTiles [GRID_SIZE * GRID_SIZE][2];
     Vector2 startPos = {0};
     Vector2 mousePos;
 
@@ -920,12 +949,20 @@ int main() {
         drawExistingMap(&currentMap, tileTypes, camera, windowState.width, windowState.height);
 
         // Handle mouse input and drawing
+
+            // First Drawing mode. Hold Shift and drag box.
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && IsKeyDown(KEY_LEFT_SHIFT)) {
+            startPos = mousePos;
+            isShiftDrawing = true;
+
+            // Second drawing mode. Painter.
+        } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !IsKeyDown(KEY_LEFT_SHIFT)) {
+            drawnTilesCount = 0;
             startPos = mousePos;
             isDrawing = true;
         }
 
-        if (isDrawing) {
+        if (isShiftDrawing) {
             WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
 
             // Calculate the size of the array based on the bounding box
@@ -934,34 +971,63 @@ int main() {
             coordsToArray(coords, coordArray);
 
             drawPreview(coordArray, coordArraySize, tileTypes, activeTileKey);
+        } else if (isDrawing) {
+            
+            WorldCoords coords = getWorldGridCoords(mousePos, mousePos, camera);
+            int x = coords.endX;
+            int y = coords.endY;
+
+            if (!visitedCheck(drawnTiles, drawnTilesCount, x, y)) {
+               drawnTiles[drawnTilesCount][0] = x;
+               drawnTiles[drawnTilesCount][1] = y;
+               drawnTilesCount++;
+            }
+
+            drawPreview(drawnTiles, drawnTilesCount, tileTypes, activeTileKey);
+
         } else {
             // Draw cursor preview
             WorldCoords coords = getWorldGridCoords(mousePos, mousePos, camera);
-            Texture2D tileTexture = tileTypes[activeTileKey].tex;
+            Texture2D tileTexture = tileTypes[activeTileKey].tex[0];
             Vector2 tilePos = { coords.startX * TILE_SIZE, coords.startY * TILE_SIZE };
             DrawTexture(tileTexture, tilePos.x, tilePos.y, WHITE);
             DrawRectangleLines(tilePos.x, tilePos.y, TILE_SIZE, TILE_SIZE, RED);
         }
 
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT) && isDrawing) {
-            WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
 
-            // Calculate the size of the array based on the bounding box
-            int coordArraySize = getBoundingBoxSize(coords);
-            int coordArray[coordArraySize][2];
-            coordsToArray(coords, coordArray);
-            
-            // Get neighbors to placement
-            int visitedTiles[GRID_SIZE * GRID_SIZE / 2][2];
-            int visitedCount = 0;
-            calculateEdgeGrid(coordArray, coordArraySize, visitedTiles, &visitedCount);
+            if (isShiftDrawing) {
+                WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
 
-            // Texture updates
-            applyTiles(&currentMap, coordArray, coordArraySize, activeTileKey);
-            computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
+                // Calculate the size of the array based on the bounding box
+                int coordArraySize = getBoundingBoxSize(coords);
+                int coordArray[coordArraySize][2];
+                coordsToArray(coords, coordArray);
+                
+                // Get neighbors to placement
+                int visitedTiles[GRID_SIZE * GRID_SIZE / 2][2];
+                int visitedCount = 0;
+                calculateEdgeGrid(coordArray, coordArraySize, visitedTiles, &visitedCount);
 
-            printf("Drawing released with range ((%d,%d),(%d,%d))\n", 
-                   coords.startX, coords.endX, coords.startY, coords.endY);
+                // Texture updates
+                applyTiles(&currentMap, coordArray, coordArraySize, activeTileKey);
+                computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
+                isShiftDrawing = false;
+            } else if (isDrawing) {
+
+                // Get neighbors to placement
+                int visitedTiles[GRID_SIZE * GRID_SIZE / 2][2];
+                int visitedCount = 0;
+                calculateEdgeGrid(drawnTiles, drawnTilesCount, visitedTiles, &visitedCount);
+
+                // Texture updates
+                applyTiles(&currentMap, drawnTiles, drawnTilesCount, activeTileKey);
+                computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes, edgeTypes);
+                memset(drawnTiles, 0, sizeof(drawnTiles));
+                isDrawing = false;
+
+            }
+            isShiftDrawing = false;
             isDrawing = false;
         }
 
