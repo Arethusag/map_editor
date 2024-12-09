@@ -375,7 +375,7 @@ void saveMap(sqlite3 *db, char *table) {
             "tile_key INTEGER NOT NULL,"
             "tile_style INTEGER NOT NULL);", table);
     snprintf(insertQuery, sizeof(insertQuery),
-            "INSERT INTO %s (x, y, tile_key, tile_style) VALUES (?, ?, ?);", table);
+            "INSERT INTO %s (x, y, tile_key, tile_style) VALUES (?, ?, ?, ?);", table);
 
     // Execute DROP TABLE
     if (sqlite3_prepare_v2(db, dropQuery, -1, &dropStmt, NULL) == SQLITE_OK) {
