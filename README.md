@@ -40,8 +40,6 @@ file and produces a copy with a 32x32 pixel grid overlay with cell numbering.
 
 ## Roadmap
 
-- Feature: undo/redo with ctrl+z ctrl+y
-- Feature: preview edges while drawing
 - Feature: implement pathing placement algorithm
 - Feature: Wall tile placements
 - Feature: cmd error messages display onscreen

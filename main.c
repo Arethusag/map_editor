@@ -968,19 +968,50 @@ void handleCommandMode(char *command, unsigned int *commandIndex, bool *inComman
 }
 
 // Draw update functions
-void drawPreview(int drawnTiles[][3], int drawnTilesCount, Tile tileTypes[], int activeTileKey) {
+void drawPreview(Map *currentMap, int drawnTiles[][3], int drawnTilesCount, Tile tileTypes[], Edge edgeTypes[], int activeTileKey) {
 
+    //Make temp map from drawn tiles and current map
+    Map tempMap;
+    memset(tempMap.grid, 0, sizeof(tempMap.grid));
+    memcpy(tempMap.grid, currentMap->grid, sizeof(currentMap->grid));
+
+    // Draw tiles
     for (int i = 0; i < drawnTilesCount; i++) {
         int x = drawnTiles[i][0];
         int y = drawnTiles[i][1];
         int style = drawnTiles[i][2];
 
+        // Populate temp map
+        tempMap.grid[x][y][0] = activeTileKey;
+
         // Draw the texture
         Texture2D tileTexture = tileTypes[activeTileKey].tex[style];
         Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
         DrawTexture(tileTexture, pos.x, pos.y, WHITE);
-        DrawRectangleLines(pos.x, pos.y, TILE_SIZE, TILE_SIZE, RED);
+    }
+
+    // Draw edges
+    int edgeGrid[GRID_SIZE * GRID_SIZE][2];
+    int edgeGridCount = 0;
+    calculateEdgeGrid(drawnTiles, drawnTilesCount, edgeGrid, &edgeGridCount);
+
+    for (int i = 0; i < edgeGridCount; i++) {
+        int x = edgeGrid[i][0];
+        int y = edgeGrid[i][1];
+        Vector2 pos = { x * TILE_SIZE, y * TILE_SIZE };
+
+        Texture2D resultTextures[12];
+        int textureCount = 0; // Keeps track of populated textures
         
+        // Compute edges for this tile
+        getEdgeTextures(&tempMap, x, y, tileTypes, edgeTypes, resultTextures, &textureCount);
+        
+        // If a valid edge texture is found, store it
+        for (int j = 0; j < textureCount; j++) {
+            if (resultTextures[j].id != 0) {
+                DrawTexture(resultTextures[j], pos.x, pos.y, WHITE);
+            }
+        }
     }
 }
 
@@ -1222,7 +1253,7 @@ int main() {
             coordsToArray(coords, coordArray);
 
             updateDrawnTiles(coordArray, coordArraySize, drawnTiles, &drawnTilesCount, activeTileKey, tileTypes);
-            drawPreview(drawnTiles, drawnTilesCount, tileTypes, activeTileKey);
+            drawPreview(&currentMap, drawnTiles, drawnTilesCount, tileTypes, edgeTypes, activeTileKey);
 
         } else if (isDrawing) {
             
@@ -1246,7 +1277,7 @@ int main() {
                 drawnTilesCount++;
             }
 
-            drawPreview(drawnTiles, drawnTilesCount, tileTypes, activeTileKey);
+            drawPreview(&currentMap, drawnTiles, drawnTilesCount, tileTypes, edgeTypes, activeTileKey);
 
         } else {
             // Draw cursor preview
@@ -1260,7 +1291,7 @@ int main() {
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
 
             // Get neighbors to placement
-            int visitedTiles[GRID_SIZE * GRID_SIZE / 2][2];
+            int visitedTiles[GRID_SIZE * GRID_SIZE][2];
             int visitedCount = 0;
             calculateEdgeGrid(drawnTiles, drawnTilesCount, visitedTiles, &visitedCount);
 
@@ -1280,8 +1311,7 @@ int main() {
         EndMode2D();
 
         // Handle command mode
-        handleCommandMode(command, &commandIndex, &inCommandMode, windowState.height, 
-                         windowState.width, tileTypes, edgeTypes, db);
+        handleCommandMode(command, &commandIndex, &inCommandMode, windowState.height, windowState.width, tileTypes, edgeTypes, db);
 
         EndDrawing();
     }
