@@ -92,6 +92,12 @@ Map currentMap;
 sqlite3 *db;
 Camera2D camera = {0};
 Color transparencyKey = {255, 0, 255, 255};
+
+// Math utils
+int abs(int x) {
+    return x < 0 ? -x : x;
+}
+
 // Database functions
 Edge* loadEdges(sqlite3 *db) {
     
@@ -546,20 +552,71 @@ int getRandTileStyle(int tileKey, Tile *tileTypes) {
     }
 }
 
-// Edge placement functions
-void markEdge(NeighborInfo* edgeNumbers, int edgeIndex, NeighborInfo neighbor) {
-    edgeNumbers[edgeIndex] = neighbor;
+void calculatePath(WorldCoords coords, int path[][2]) {
+    int dx = coords.endX - coords.startX;
+    int dy = coords.endY - coords.startY;
+    int steps = abs(dx) + abs(dy) + 1;
+    int count = 0;
+    path[count][0] = coords.startX;
+    path[count][1] = coords.startY;
+    count++;
+
+    if (abs(dx) == abs(dy)) {
+        int stepX = (dx > 0) ? 1 : (dx < 0) ? -1 : 0;
+        int stepY = (dy > 0) ? 1 : (dy < 0) ? -1 : 0;
+        for (int i = 0; i <= steps; i++) {
+            path[i][0] = coords.startX + i/2 * stepX;
+            path[i][1] = coords.startY + i/2 * stepY;
+        }
+    } else if (abs(dx) > abs(dy)) {
+        int bendX = (dx != 0) ? coords.endX : coords.startX;
+        int bendY = (dy != 0) ? coords.startY : coords.endY;
+            
+        // Draw X path
+        for (int i = 1; i <= abs(dx); i++) {
+            path[count][0] = coords.startX + (dx > 0 ? i : -i);
+            path[count][1] = coords.startY;
+            count++;
+        }
+
+        // Draw Y path
+        for (int i = 1; i <= abs(dy); i++) {
+            path[count][0] = bendX;
+            path[count][1] = bendY + (dy > 0 ? i : -i);
+            count++;
+        }
+    } else if (abs(dy) > abs(dx)) {
+        int count = 1;
+        int bendX = (dx != 0) ? coords.startX : coords.endX;
+        int bendY = (dy != 0) ? coords.startY : coords.endY;
+            
+        // Draw X path
+        for (int i = 1; i <= abs(dx); i++) {
+            path[count][0] = coords.startX + (dx > 0 ? i : -i);
+            path[count][1] = coords.endY;
+            count++;
+        }
+        
+        // Draw Y path
+        for (int i = 1; i <= abs(dy); i++) {
+            path[count][0] = bendX;
+            path[count][1] = bendY + (dy > 0 ? i : -i);
+            count++;
+        }
+    }
 }
 
+// Edge functions
 void processCorner(NeighborInfo* edgeNumbers, NeighborInfo* neighbors, bool* visitedTiles, int index, int adjacent1, int adjacent2) {
-   int opposite1 = (adjacent1 + 2) % 4; // Calculate opposites
+    int opposite1 = (adjacent1 + 2) % 4; // Calculate opposites
     int opposite2 = (adjacent2 + 2) % 4;
 
     if (neighbors[adjacent1].tileKey == neighbors[adjacent2].tileKey &&
         neighbors[adjacent1].tileKey != 0 &&
         neighbors[adjacent1].tileKey != neighbors[opposite1].tileKey &&
         neighbors[adjacent1].tileKey != neighbors[opposite2].tileKey) {
-        markEdge(edgeNumbers, index, neighbors[adjacent1]);
+
+        edgeNumbers[index] = neighbors[adjacent1];
         visitedTiles[adjacent1] = visitedTiles[adjacent2] = true;
     }
 }
@@ -568,7 +625,7 @@ void processDiagonal(NeighborInfo* edgeNumbers, NeighborInfo* neighbors, bool* v
     if (neighbors[index].tileKey != 0 &&
         (!visitedTiles[adjacent1] || neighbors[index].priority > neighbors[adjacent1].priority) &&
         (!visitedTiles[adjacent2] || neighbors[index].priority > neighbors[adjacent2].priority)) {
-        markEdge(edgeNumbers, index, neighbors[index]);
+        edgeNumbers[index] = neighbors[index];
     }
 }
 
@@ -625,7 +682,7 @@ void getEdgeTextures(Map* map, int x, int y, Tile tileTypes[], Edge edgeTypes[],
     // Process cardinal edges
     for (int i = 0; i < 4; i++) {
         if (neighbors[i].tileKey != 0 && !visitedTiles[i]) {
-            markEdge(edgeNumbers, i, neighbors[i]);
+            edgeNumbers[i] = neighbors[i];
             visitedTiles[i] = true;
         }
     }
@@ -1149,8 +1206,9 @@ int main() {
     cameraState.lastMousePosition = (Vector2){0, 0};
 
     // Drawing state
-    bool isShiftDrawing = false; //Box mode
-    bool isDrawing = false; // Painter mode
+    bool isShiftDrawing = false; // Box mode
+    bool isCtrlDrawing = false;  // Pathing mode
+    bool isDrawing = false;      // Painter mode
 
 
     int drawnTilesCount = 0;
@@ -1230,19 +1288,22 @@ int main() {
         drawExistingMap(&currentMap, tileTypes, camera, windowState.width, windowState.height);
 
         // Handle mouse input and drawing
-
-            // First Drawing mode. Hold Shift and drag box.
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && IsKeyDown(KEY_LEFT_SHIFT)) {
+            // Drawing mode: box
             drawnTilesCount = 0;
             startPos = mousePos;
             isShiftDrawing = true;
-
-            // Second drawing mode. Painter.
-        } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !IsKeyDown(KEY_LEFT_SHIFT)) {
+        } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && IsKeyDown(KEY_LEFT_CONTROL)) {
+            // Drawing mode: pathing
+            drawnTilesCount = 0;
+            startPos = mousePos;
+            isCtrlDrawing = true;
+        } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !IsKeyDown(KEY_LEFT_SHIFT && !IsKeyDown(KEY_LEFT_CONTROL))) {
+            // Drawing mode: painter
             drawnTilesCount = 0;
             startPos = mousePos;
             isDrawing = true;
-        }
+        } 
 
         if (isShiftDrawing) {
             WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
@@ -1252,6 +1313,17 @@ int main() {
             int coordArray[coordArraySize][2];
             coordsToArray(coords, coordArray);
 
+            updateDrawnTiles(coordArray, coordArraySize, drawnTiles, &drawnTilesCount, activeTileKey, tileTypes);
+            drawPreview(&currentMap, drawnTiles, drawnTilesCount, tileTypes, edgeTypes, activeTileKey);
+        } else if (isCtrlDrawing) {
+            WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
+
+            /* int euclideanDistance = (abs(coords.endX - coords.startX) + (abs(coords.endY - coords.startY))); */
+            /* int coordArraySize = (euclideanDistance == 0) ? 1 : euclideanDistance + 1; */
+            int coordArraySize = (abs(coords.endX - coords.startX) + (abs(coords.endY - coords.startY)) + 1);
+            int coordArray[coordArraySize][2];
+
+            calculatePath(coords, coordArray);
             updateDrawnTiles(coordArray, coordArraySize, drawnTiles, &drawnTilesCount, activeTileKey, tileTypes);
             drawPreview(&currentMap, drawnTiles, drawnTilesCount, tileTypes, edgeTypes, activeTileKey);
 
@@ -1305,6 +1377,7 @@ int main() {
             memset(drawnTiles, 0, sizeof(drawnTiles));
 
             isShiftDrawing = false;
+            isCtrlDrawing = false;
             isDrawing = false;
         }
 
