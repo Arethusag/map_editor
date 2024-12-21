@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS map(
     y INTEGER NOT NULL, 
     tile_key INTEGER NOT NULL,
     tile_style INTEGER NOT NULL,
+    wall_key INTEGER NOT NULL,
     FOREIGN KEY (tile_key) REFERENCES tile(tile_key)
 );
 
@@ -18,7 +19,7 @@ END_SQL
 # Insert default tile 0 into all map grid cells
 for ((x=0; x<GRID_SIZE; x++)); do
     for ((y=0; y<GRID_SIZE; y++)); do
-        sqlite3 "$DB_FILE" "INSERT INTO map (x, y, tile_key, tile_style) VALUES ($x,$y,$((0)),$((0)));"
+        sqlite3 "$DB_FILE" "INSERT INTO map (x, y, tile_key, tile_style, wall_key) VALUES ($x,$y,$((0)),$((0)),$((0)));"
     done
 done
 
@@ -42,14 +43,28 @@ CREATE TABLE IF NOT EXISTS tile(
     edge_priority INTEGER NOT NULL CHECK(edge_priority IN (1, 2, 3, 4))
 ) WITHOUT rowid;
 INSERT INTO tile (tile_key, walkable, description, edge_indicator, edge_priority)
-    VALUES (0, 0, 'default', 0, 1),
-           (1, 0, 'grass'  , 1, 4),
-           (2, 0, 'water'  , 0, 1),
-           (3, 0, 'dirt'   , 1, 3),
-           (4, 0, 'rock'   , 0, 1),
-           (5, 0, 'stone'  , 1, 2) 
+    VALUES (0, 0, 'default'    , 0, 1),
+           (1, 0, 'grass'      , 1, 4),
+           (2, 0, 'water'      , 0, 1),
+           (3, 0, 'dirt'       , 1, 3),
+           (4, 0, 'rock'       , 0, 1),
+           (5, 0, 'stone'      , 1, 2)
 ; 
+END_SQL
 
+# Create wall table and insert records
+sqlite3 "$DB_FILE" <<'END_SQL'
+DROP TABLE IF EXISTS wall;
+CREATE TABLE IF NOT EXISTS wall(
+    wall_key INTEGER PRIMARY KEY,
+    description TEXT NOT NULL,
+    type TEXT NOT NULL
+) WITHOUT rowid;
+INSERT INTO wall (wall_key, description, type)
+    VALUES (1, 'stone', 'wall'),
+           (2, 'stone', 'window'),
+           (3, 'stone', 'arch')
+; 
 END_SQL
 
 # Create texture table
@@ -61,9 +76,12 @@ CREATE TABLE IF NOT EXISTS texture(
     name TEXT NOT NULL,
     style INTEGER NOT NULL,
     source TEXT NOT NULL,
-    tile_key INTEGER NOT NULL,
+    tile_key INTEGER,
+    wall_key INTEGER,
+    orientation TEXT,
     data BLOB,
-    FOREIGN KEY (tile_key) REFERENCES tile(tile_key)
+    FOREIGN KEY (tile_key) REFERENCES tile(tile_key),
+    FOREIGN KEY (wall_key) REFERENCES wall(wall_key)
 );
 END_SQL
 

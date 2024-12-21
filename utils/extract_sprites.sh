@@ -41,14 +41,24 @@ pad_number() {
     printf "%02d" "$1"
 }
 
-# Function to extract tile and store in database
-extract_tile() {
+# Function to extract scprite and store in database
+extract_sprite() {
     local style=$1
     local type=$2
     local name=$3
     local source=$4
     local sprite_pos=$5
-    local tile_key=$6
+    local key_value=$6
+    local orientation=$7
+
+    local tile_key="NULL"
+    local wall_key="NULL"
+
+    if [[ "$source" == *"tiles"* ]]; then
+        tile_key=$key_value
+    elif [[ "$source" == *"walls"* ]]; then
+        wall_key=$key_value
+    fi
 
     local x=$(( (sprite_pos - 1) % cols ))
     local y=$(( (sprite_pos - 1) / cols ))
@@ -71,13 +81,15 @@ extract_tile() {
     
     # Insert into database
     sqlite3 "$db_file" << EOF
-INSERT INTO texture (type, name, style, source, tile_key, data)
+INSERT INTO texture (type, name, style, source, tile_key, wall_key, orientation, data)
 VALUES (
     '${type}',
     '${name}',
     ${style},
     '${source}',
-    '${tile_key}',
+    ${tile_key},
+    ${wall_key},
+    '${orientation}',
     readfile('${bin_file}')
 );
 EOF
@@ -108,24 +120,52 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         continue
     fi
     
-    IFS=: read -r range type name tile_key <<< "$line"
+    IFS=: read -r range type name key_value orientation <<< "$line"
     
     echo "Processing $type $name from $current_file..."
-    
-    start=$(echo "$range" | cut -d'-' -f1)
-    end=$(echo "$range" | cut -d'-' -f2)
 
-    if [ "$start" -gt "$total_tiles" ] || [ "$end" -gt "$total_tiles" ]; then
-        echo "Warning: Range $start-$end exceeds total tiles ($total_tiles)"
-        continue
+    if [[ "$range" == *-* ]]; then # Check if it's a range (contains '-')
+      
+        start=$(echo "$range" | cut -d'-' -f1)
+        end=$(echo "$range" | cut -d'-' -f2)
+
+        if [ "$start" -gt "$total_tiles" ] || [ "$end" -gt "$total_tiles" ]; then
+            echo "Warning: Range $start-$end exceeds total tiles ($total_tiles)"
+            return 1 # Indicate an error
+        fi
+
+        style_counter=1
+        for i in $(seq "$start" "$end"); do
+            extract_sprite "$style_counter" "$type" "$name" "$current_file" "$i" "$key_value" "$orientation"
+            style_counter=$((style_counter+1))
+        done
+
+    elif [[ "$range" == *,* ]]; then # Check if it's a list (contains ',')
+
+        style_counter=1
+        IFS=',' read -r -a tiles <<< "$range"
+
+        for tile in "${tiles[@]}"; do
+
+            tile=$(echo "$tile" | xargs) # trim whitespace
+            if [ "$tile" -gt "$total_tiles" ]; then
+                echo "Warning: Tile $tile exceeds total tiles ($total_tiles)"
+                return 1 # Indicate an error
+            fi
+            extract_sprite "$style_counter" "$type" "$name" "$current_file" "$tile" "$key_value" "$orientation"
+            style_counter=$((style_counter+1))
+        done
+
+    else #single number
+        if [ "$range" -gt "$total_tiles" ]; then
+            echo "Warning: Tile $range exceeds total tiles ($total_tiles)"
+            return 1 # Indicate an error
+        fi
+
+        extract_sprite "1" "$type" "$name" "$current_file" "$range" "$key_value" "$orientation"
+
     fi
-    
-    style_counter=1
-    for i in $(seq "$start" "$end"); do
-        extract_tile "$style_counter" "$type" "$name" "$current_file" "$i" "$tile_key"
-        style_counter=$(($style_counter+1))
-    done
-    
+
 done < "$config_file"
 
 # Generate database summary
@@ -136,10 +176,9 @@ SELECT
     type,
     name,
     COUNT(*) as count,
-    source,
-    tile_key
+    source
 FROM texture 
-GROUP BY type, name, source, tile_key
+GROUP BY type, name, source
 ORDER BY type, name;
 
 SELECT 
@@ -147,7 +186,7 @@ SELECT
     COUNT(DISTINCT type) as unique_types,
     COUNT(DISTINCT name) as unique_names,
     COUNT(DISTINCT source) as source_files,
-    COUNT(DISTINCT tile_key) as unique_tiles
+    COUNT(DISTINCT COALESCE(tile_key, wall_key)) as unique_objects
 FROM texture;
 END_SQL
 

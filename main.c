@@ -27,7 +27,7 @@ typedef struct EdgeTextureInfo {
     int priority;
 } EdgeTextureInfo;
 
-typedef struct Tile {
+typedef struct Tile { // ground tiles
     int tileKey;
     int walkable;
     Texture2D tex[MAX_TILE_VARIANTS];
@@ -36,10 +36,18 @@ typedef struct Tile {
     int edgeIndicator;
 } Tile;
 
+typedef struct Wall { // wall tiles
+    int wallKey;
+    int orientation;
+    Texture2D tex[4];
+
+} Wall;
+
 typedef struct Map {
     const char *name;
-    int grid[GRID_SIZE][GRID_SIZE][2];
-    Texture2D edges[GRID_SIZE][GRID_SIZE][12];
+    int grid[GRID_SIZE][GRID_SIZE][3];            // x, y, 1: tileKey, 2: tileStyle 3: wallKey
+    Texture2D edges[GRID_SIZE][GRID_SIZE][12];    // 12 possible types of ground edges
+    Texture2D wallEdges[GRID_SIZE][GRID_SIZE][2]; // 2 possible types of wall edges
     int edgeCount[GRID_SIZE][GRID_SIZE];
 } Map;
 

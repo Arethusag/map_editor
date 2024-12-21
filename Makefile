@@ -6,11 +6,12 @@ TARGET = main
 SRC = main.c
 DB = test.db
 
+
 # Default target
 all: $(DB) $(TARGET)
 
 # Run setup scripts
-$(DB): setup.sh
+$(DB): setup.sh utils/extract_sprites.sh assets/sprites.conf
 	./setup.sh
 
 # Build target
