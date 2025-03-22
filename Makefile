@@ -3,7 +3,8 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g 
 LIBS = -lsqlite3 -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 TARGET = main
-SRC = main.c
+SRC = src/main.c src/database.c
+OBJ = $(SRC:.c=.o)
 DB = test.db
 
 
@@ -11,16 +12,20 @@ DB = test.db
 all: $(DB) $(TARGET)
 
 # Run setup scripts
-$(DB): setup.sh utils/extract_sprites.sh assets/sprites.conf
-	./setup.sh
+$(DB): utils/setup.sh utils/extract_sprites.sh assets/sprites.conf
+	./utils/setup.sh
 
 # Build target
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LIBS)
+$(TARGET): $(OBJ)
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJ) $(LIBS)
+
+# Compile object files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # Clean target to remove generated files
 clean:
-	rm -f $(TARGET) $(DB)
+	rm -f $(TARGET) $(DB) $(OBJ)
 
 # Run target to execute the program
 run: $(TARGET)
