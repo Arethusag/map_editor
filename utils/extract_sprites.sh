@@ -49,15 +49,14 @@ extract_sprite() {
     local source=$4
     local sprite_pos=$5
     local key_value=$6
-    local orientation=$7
 
     local tile_key="NULL"
-    local wall_key="NULL"
+    local wall_quadrant_key="NULL"
 
     if [[ "$source" == *"tiles"* ]]; then
         tile_key=$key_value
     elif [[ "$source" == *"walls"* ]]; then
-        wall_key=$key_value
+        wall_quadrant_key=$key_value
     fi
 
     local x=$(( (sprite_pos - 1) % cols ))
@@ -81,15 +80,14 @@ extract_sprite() {
     
     # Insert into database
     sqlite3 "$db_file" << EOF
-INSERT INTO texture (type, name, style, source, tile_key, wall_key, orientation, data)
+INSERT INTO texture (type, name, style, source, tile_key, wall_quadrant_key, data)
 VALUES (
     '${type}',
     '${name}',
     ${style},
     '${source}',
     ${tile_key},
-    ${wall_key},
-    '${orientation}',
+    ${wall_quadrant_key},
     readfile('${bin_file}')
 );
 EOF
@@ -120,7 +118,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         continue
     fi
     
-    IFS=: read -r range type name key_value orientation <<< "$line"
+    IFS=: read -r range type name key_value <<< "$line"
     
     echo "Processing $type $name from $current_file..."
 
@@ -136,10 +134,10 @@ while IFS= read -r line || [[ -n "$line" ]]; do
 
         style_counter=1
         for i in $(seq "$start" "$end"); do
-            extract_sprite "$style_counter" "$type" "$name" "$current_file" "$i" "$key_value" "$orientation"
+            extract_sprite "$style_counter" "$type" "$name" "$current_file" "$i" "$key_value"
             style_counter=$((style_counter+1))
         done
-
+    
     elif [[ "$range" == *,* ]]; then # Check if it's a list (contains ',')
 
         style_counter=1
@@ -152,7 +150,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
                 echo "Warning: Tile $tile exceeds total tiles ($total_tiles)"
                 return 1 # Indicate an error
             fi
-            extract_sprite "$style_counter" "$type" "$name" "$current_file" "$tile" "$key_value" "$orientation"
+            extract_sprite "$style_counter" "$type" "$name" "$current_file" "$tile" "$tile"
             style_counter=$((style_counter+1))
         done
 
@@ -162,7 +160,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
             return 1 # Indicate an error
         fi
 
-        extract_sprite "1" "$type" "$name" "$current_file" "$range" "$key_value" "$orientation"
+        extract_sprite "1" "$type" "$name" "$current_file" "$range" "$key_value"
 
     fi
 
@@ -186,7 +184,7 @@ SELECT
     COUNT(DISTINCT type) as unique_types,
     COUNT(DISTINCT name) as unique_names,
     COUNT(DISTINCT source) as source_files,
-    COUNT(DISTINCT COALESCE(tile_key, wall_key)) as unique_objects
+    COUNT(DISTINCT COALESCE(tile_key, wall_quadrant_key)) as unique_objects
 FROM texture;
 END_SQL
 

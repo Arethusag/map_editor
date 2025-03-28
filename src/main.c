@@ -7,6 +7,7 @@
 #include "edge.h"
 #include "grid.h"
 #include "undo.h"
+#include "window.h"
 
 // system headers
 #include <raylib.h>
@@ -15,26 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-// Definitions
-#define CAMERA_SPEED 300.0f
-
-// Structs
-typedef struct Wall { // wall tiles
-  int wallKey;
-  int orientation;
-  Texture2D tex[4];
-} Wall;
-
-typedef struct CameraState {
-  bool isPanning;
-  Vector2 lastMousePosition;
-} CameraState;
-
-typedef struct WindowState {
-  int width;
-  int height;
-} WindowState;
 
 // Variables
 char command[256] = {0};
@@ -46,27 +27,6 @@ int maxTileKey;
 Map currentMap;
 sqlite3 *db;
 Camera2D camera = {0};
-
-// Math utils
-int abs(int x) { return x < 0 ? -x : x; }
-
-// Grid update functions
-void UpdateCameraOffset(Camera2D *camera, int newWidth, int newHeight) {
-  camera->offset = (Vector2){newWidth / 2.0f, newHeight / 2.0f};
-}
-
-void HandleWindowResize(WindowState *windowState, Camera2D *camera) {
-  // Get current window dimensions
-  int newWidth = GetScreenWidth();
-  int newHeight = GetScreenHeight();
-
-  // Only update if dimensions actually changed
-  if (newWidth != windowState->width || newHeight != windowState->height) {
-    windowState->width = newWidth;
-    windowState->height = newHeight;
-    UpdateCameraOffset(camera, newWidth, newHeight);
-  }
-}
 
 // Entry point
 int main() {
@@ -117,11 +77,14 @@ int main() {
 
   int drawnTilesCount = 0;
   int drawnTiles[GRID_SIZE * GRID_SIZE][3]; // 0=x; 1=y; 2=style
+
+  // Initialize mouse vectors
   Vector2 startPos = {0};
   Vector2 mousePos;
 
   // Event loop
   while (!WindowShouldClose()) {
+
     // Handle window resizing
     HandleWindowResize(&windowState, &camera);
 
@@ -318,7 +281,6 @@ int main() {
     batch = nextBatch;
   }
   free(manager);
-
   free(tileTypes);
   free(edgeTypes);
   CloseWindow();

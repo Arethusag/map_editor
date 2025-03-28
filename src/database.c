@@ -246,6 +246,133 @@ Tile *loadTiles(sqlite3 *db) {
   return tileTypes;
 }
 
+Wall *loadWalls(sqlite3 *db) {
+
+  // Database Initialization
+  if (sqlite3_open("test.db", &db) == SQLITE_OK) {
+    printf("Database opened successfully.\n");
+  } else {
+    printf("Error opening database: %s\n", sqlite3_errmsg(db));
+  };
+
+  // Initialize variables
+  Wall *wallTypes;
+  int countWalls;
+
+  // Get number of tile types
+  const char *countQuery = "SELECT COUNT(DISTINCT wall_key) FROM wall;";
+  sqlite3_stmt *countStmt;
+
+  if (sqlite3_prepare_v2(db, countQuery, -1, &countStmt, NULL) == SQLITE_OK) {
+    if (sqlite3_step(countStmt) == SQLITE_ROW) {
+      countWalls = sqlite3_column_int(countStmt, 0);
+    }
+  } else {
+    printf("Error preparing count query: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(countStmt);
+    return NULL;
+  }
+  sqlite3_finalize(countStmt);
+
+  // Allocate memory for the walls
+  wallTypes = (Wall *)malloc(countWalls * sizeof(Wall));
+  if (wallTypes == NULL) {
+    printf("Memory allocation failed\n");
+    return NULL;
+  }
+
+  // Load wall textures from database
+  const char *wallQuery = "SELECT wall_key, name, orientation FROM wall;";
+  sqlite3_stmt *wallStmt;
+  if (sqlite3_prepare_v2(db, wallQuery, -1, &wallStmt, NULL) == SQLITE_OK) {
+    while (sqlite3_step(wallStmt) == SQLITE_ROW) {
+      int wallKey = sqlite3_column_int(wallStmt, 0);
+      const unsigned char *name = sqlite3_column_text(wallStmt, 1);
+      const unsigned char *orientation = sqlite3_column_text(wallStmt, 2);
+
+      WallTexture wallTex[4];
+      int texCount = 0;
+      char wallKeyStr[12];
+      snprintf(wallKeyStr, sizeof(wallKeyStr), "%d", wallKey);
+      const char *texQuery =
+          "SELECT data, wall_quadrant.wall_quadrant_key, "
+          "primary_quadrant_indicator, quadrant_description"
+          "FROM wall_quadrant LEFT JOIN texture "
+          "ON wall_quadrant.wall_key = texture.wall_quadrant_key"
+          "WHERE wall_key = ?;";
+      sqlite3_stmt *texStmt;
+      if (sqlite3_prepare_v2(db, texQuery, -1, &texStmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(texStmt, 1, wallKeyStr, -1, SQLITE_TRANSIENT);
+        while (sqlite3_step(texStmt) == SQLITE_ROW) {
+          const unsigned char *blobData = sqlite3_column_blob(texStmt, 0);
+          int blobSize = sqlite3_column_bytes(texStmt, 0);
+          int wallQuadrantKey = sqlite3_column_int(texStmt, 1);
+          int primaryQuadrantIndicator = sqlite3_column_int(texStmt, 2);
+          const unsigned char *quadrantDescription =
+              sqlite3_column_text(texStmt, 3);
+
+          // Verify blob size matches expected size (32x32 pixels * 4
+          // bytes per pixel)
+          if (blobSize != TILE_SIZE * TILE_SIZE * 4) {
+            printf("Error: Invalid blob size %d (expected %d)\n", blobSize,
+                   TILE_SIZE * TILE_SIZE * 4);
+            continue;
+          }
+
+          // Create color array for the texture
+          Color pixelData[TILE_SIZE * TILE_SIZE];
+
+          // Parse blob data into Color array
+          for (int i = 0; i < TILE_SIZE * TILE_SIZE; i++) {
+            // Each pixel is 4 bytes (RGBA)
+            int offset = i * 4;
+            pixelData[i] = (Color){
+                blobData[offset],     // R
+                blobData[offset + 1], // G
+                blobData[offset + 2], // B
+                blobData[offset + 3]  // A
+            };
+          }
+
+          // Initialize the Image for the tile
+          Image img = {.data = pixelData, // Directly assign the pixel data
+                       .width = TILE_SIZE,
+                       .height = TILE_SIZE,
+                       .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+                       .mipmaps = 1};
+          Texture2D loadedTex = LoadTextureFromImage(img);
+
+          wallTex[texCount] = (WallTexture){
+              .tex = loadedTex,
+              .wall_quadrant_key = wallQuadrantKey,
+              .primary_quadrant_indicator = primaryQuadrantIndicator,
+              .quadrant_description = quadrantDescription};
+          texCount++;
+        }
+      } else {
+        printf("Error preparing texture query: %s\n", sqlite3_errmsg(db));
+      }
+      sqlite3_finalize(texStmt);
+
+      wallTypes[wallKey] = (Wall){.wallKey = wallKey,
+                                  .wallTex = {{{0}}},
+                                  .name = name,
+                                  .orientation = orientation};
+
+      // Explicitly copy the textures
+      memcpy(wallTypes[wallKey].wallTex, wallTex,
+             sizeof(WallTexture) * texCount);
+    }
+
+  } else {
+    printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
+  }
+  sqlite3_finalize(wallStmt);
+  sqlite3_close(db);
+
+  return wallTypes;
+}
+
 void loadMap(sqlite3 *db, const char *table) {
 
   // Database Initialization
@@ -272,8 +399,10 @@ void loadMap(sqlite3 *db, const char *table) {
       int y = sqlite3_column_int(mapStmt, 1);
       int tileKey = sqlite3_column_int(mapStmt, 2);
       int tileStyle = sqlite3_column_int(mapStmt, 3);
+      int wallKey = sqlite3_column_int(mapStmt, 4);
       currentMap.grid[x][y][0] = tileKey;
       currentMap.grid[x][y][1] = tileStyle;
+      currentMap.grid[x][y][2] = wallKey;
     }
   } else {
     printf("Error preparing SQL query: %s\n", sqlite3_errmsg(db));
@@ -308,10 +437,12 @@ void saveMap(sqlite3 *db, char *table) {
            "x INTEGER NOT NULL,"
            "y INTEGER NOT NULL,"
            "tile_key INTEGER NOT NULL,"
-           "tile_style INTEGER NOT NULL);",
+           "tile_style INTEGER NOT NULL,"
+           "wall_key INTEGER NOT NULL);",
            table);
   snprintf(insertQuery, sizeof(insertQuery),
-           "INSERT INTO %s (x, y, tile_key, tile_style) VALUES (?, ?, ?, ?);",
+           "INSERT INTO %s (x, y, tile_key, tile_style, wall_key) VALUES (?, "
+           "?, ?, ?, ?);",
            table);
 
   // Execute DROP TABLE
@@ -337,11 +468,12 @@ void saveMap(sqlite3 *db, char *table) {
         if (currentMap.grid[x][y][0] != 0) {
           int tileKey = currentMap.grid[x][y][0];
           int tileStyle = currentMap.grid[x][y][1];
-          sqlite3_bind_int(insertStmt, 1, x);       // Bind x
-          sqlite3_bind_int(insertStmt, 2, y);       // Bind y
-          sqlite3_bind_int(insertStmt, 3, tileKey); // Bind tile_key
-          sqlite3_bind_int(insertStmt, 4,
-                           tileStyle); // Bind tile_style
+          int wallKey = currentMap.grid[x][y][2];
+          sqlite3_bind_int(insertStmt, 1, x);         // Bind x
+          sqlite3_bind_int(insertStmt, 2, y);         // Bind y
+          sqlite3_bind_int(insertStmt, 3, tileKey);   // Bind tile_key
+          sqlite3_bind_int(insertStmt, 4, tileStyle); // Bind tile_style
+          sqlite3_bind_int(insertStmt, 5, wallKey);   // Bind wall_key
           sqlite3_step(insertStmt);
           sqlite3_reset(insertStmt);
           sqlite3_clear_bindings(insertStmt);

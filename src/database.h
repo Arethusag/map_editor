@@ -4,6 +4,7 @@
 
 // variables
 #define MAX_TILE_VARIANTS 20
+#define MAX_WALL_VARIANTS 4
 #define TILE_SIZE 32
 #define GRID_SIZE 16
 
@@ -37,6 +38,20 @@ typedef struct Map {
   int edgeCount[GRID_SIZE][GRID_SIZE];
 } Map;
 
+typedef struct WallTexture {
+  Texture2D tex;
+  int wall_quadrant_key;
+  int primary_quadrant_indicator;
+  const unsigned char *quadrant_description;
+} WallTexture;
+
+typedef struct Wall {
+  int wallKey;
+  WallTexture wallTex[4];
+  const unsigned char *name;
+  const unsigned char *orientation;
+} Wall;
+
 // globals
 extern int countEdges;
 extern int maxTileKey;
@@ -45,6 +60,7 @@ extern Map currentMap;
 // Function prototypes
 Edge *loadEdges(sqlite3 *db);
 Tile *loadTiles(sqlite3 *db);
+Wall *loadWalls(sqlite3 *db);
 void loadMap(sqlite3 *db, const char *table);
 void saveMap(sqlite3 *db, char *table);
 

@@ -3,7 +3,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g 
 LIBS = -lsqlite3 -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 TARGET = main
-SRC = src/main.c src/database.c src/edge.c src/undo.c src/command.c src/grid.c src/draw.c
+SRC = src/main.c src/database.c src/edge.c src/undo.c src/command.c src/grid.c src/draw.c src/window.c
 OBJ = $(SRC:.c=.o)
 DB = test.db
 
@@ -12,7 +12,7 @@ DB = test.db
 all: $(DB) $(TARGET)
 
 # Run setup scripts
-$(DB): utils/setup.sh utils/extract_sprites.sh assets/sprites.conf
+$(DB): utils/setup.sh utils/extract_sprites.sh assets/sprites.conf utils/generate_tables.sh
 	./utils/setup.sh
 
 # Build target

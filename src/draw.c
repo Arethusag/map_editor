@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+int abs(int x) { return x < 0 ? -x : x; }
+
 int getRandTileStyle(int tileKey, Tile *tileTypes) {
   int texCount = tileTypes[tileKey].texCount;
   if (texCount == 0) {
@@ -156,6 +158,10 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera,
         Texture2D edgeTexture = map->edges[x][y][i];
         DrawTexture(edgeTexture, pos.x, pos.y, WHITE);
       }
+
+      // // Draw the wall for each grid cell
+      // Texture2D wallTexture = map->edgeCount[x][y];
+      // DrawTexture(wallTexture, pos.x, pos.y, WHITE);
     }
   }
 }

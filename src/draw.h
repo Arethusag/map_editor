@@ -7,6 +7,8 @@
 #include "grid.h"
 
 // functions
+int abs(int x);
+
 int getRandTileStyle(int tileKey, Tile *tileTypes);
 
 void calculatePath(WorldCoords coords, int path[][2]);

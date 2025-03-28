@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS map(
     tile_key INTEGER NOT NULL,
     tile_style INTEGER NOT NULL,
     wall_key INTEGER NOT NULL,
-    FOREIGN KEY (tile_key) REFERENCES tile(tile_key)
+    FOREIGN KEY (tile_key) REFERENCES tile(tile_key),
+    FOREIGN KEY (wall_key) REFERENCES wall(wall_key)
 );
 
 END_SQL
@@ -28,6 +29,9 @@ sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 0 WHERE x = 3 AND 
 sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 1 WHERE x = 4 AND y = 4;"
 sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 3 WHERE x = 10 AND y = 10;"
 sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 17 WHERE x = 9 AND y = 11;"
+
+# Place 4 stone wall tiles
+sqlite3 "$DB_FILE" "Update map SET wall_key = 1 WHERE x = 7 AND y = 7;"
 
 # Count total number of tiles
 sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM map;"
@@ -57,14 +61,22 @@ sqlite3 "$DB_FILE" <<'END_SQL'
 DROP TABLE IF EXISTS wall;
 CREATE TABLE IF NOT EXISTS wall(
     wall_key INTEGER PRIMARY KEY,
-    description TEXT NOT NULL,
-    type TEXT NOT NULL
+    name TEXT NOT NULL,
+    orientation NOT NULL
 ) WITHOUT rowid;
-INSERT INTO wall (wall_key, description, type)
-    VALUES (1, 'stone', 'wall'),
-           (2, 'stone', 'window'),
-           (3, 'stone', 'arch')
-; 
+END_SQL
+
+# Create wall type table and insert records
+sqlite3 "$DB_FILE" <<'END_SQL'
+DROP TABLE IF EXISTS wall_quadrant;
+CREATE TABLE IF NOT EXISTS wall_quadrant(
+    wall_quadrant_key INTEGER PRIMARY KEY,
+    wall_key INTEGER NOT NULL,
+    quadrant_key INTEGER NOT NULL,
+    quadrant_description TEXT NOT NULL,
+    primary_quadrant_indicator INT CHECK(primary_quadrant_indicator IN (0,1)),
+    FOREIGN KEY (wall_key) REFERENCES wall_type(wall_key)
+) WITHOUT rowid;
 END_SQL
 
 # Create texture table
@@ -77,11 +89,10 @@ CREATE TABLE IF NOT EXISTS texture(
     style INTEGER NOT NULL,
     source TEXT NOT NULL,
     tile_key INTEGER,
-    wall_key INTEGER,
-    orientation TEXT,
+    wall_quadrant_key INTEGER,
     data BLOB,
     FOREIGN KEY (tile_key) REFERENCES tile(tile_key),
-    FOREIGN KEY (wall_key) REFERENCES wall(wall_key)
+    FOREIGN KEY (wall_quadrant_key) REFERENCES wall_quadrant(wall_quadrant_key)
 );
 END_SQL
 
@@ -124,3 +135,8 @@ rm -f $FILE
 
 # Process remaining tiles
 bash utils/extract_sprites.sh
+
+# Generate tables
+bash utils/generate_tables.sh
+
+

@@ -55,7 +55,7 @@ done
 # Apply all transformations in a single command
 magick "$input_file" -strokewidth 1 \
     -stroke white "${grid_commands[@]}" \
-    -stroke none -pointsize 10 "${text_commands[@]}" \
+    -stroke none -pointsize 8 -font "DejaVu-Sans" "${text_commands[@]}" \
     "$output_file"
 
 echo "Created grid reference: $output_file"
