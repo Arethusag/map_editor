@@ -30,6 +30,7 @@ Camera2D camera = {0};
 
 // Entry point
 int main() {
+
   loadMap(db, "map");
 
   // Set window dimensions

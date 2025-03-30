@@ -7,31 +7,82 @@
 // Variables
 Color transparencyKey = {255, 0, 255, 255};
 
+// Helper functions
+int executeScalarQuery(sqlite3 *db, const char *query) {
+  sqlite3_stmt *stmt;
+  int scalar = 0;
+  if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) == SQLITE_OK) {
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+      scalar = sqlite3_column_int(stmt, 0);
+    }
+  } else {
+    printf("Error preparing query: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
+    return -1;
+  }
+  sqlite3_finalize(stmt);
+  return scalar;
+}
+
+Texture2D loadTextureFromBlob(const unsigned char *blobData, int blobSize) {
+  Texture2D texture = {0};
+  if (blobSize != TILE_SIZE * TILE_SIZE * 4) {
+    printf("Error: Invalid blob size %d (expected %d)\n", blobSize,
+           TILE_SIZE * TILE_SIZE * 4);
+    return texture; // Return an empty texture on error
+  }
+
+  // Create color array for the texture
+  Color pixelData[TILE_SIZE * TILE_SIZE];
+
+  // Parse blob data into Color array
+  for (int i = 0; i < TILE_SIZE * TILE_SIZE; i++) {
+    // Each pixel is 4 bytes (RGBA)
+    int offset = i * 4;
+    pixelData[i] = (Color){
+        blobData[offset],     // R
+        blobData[offset + 1], // G
+        blobData[offset + 2], // B
+        blobData[offset + 3]  // A
+    };
+
+    // Apply transparency key
+    if (pixelData[i].r == transparencyKey.r &&
+        pixelData[i].g == transparencyKey.g &&
+        pixelData[i].b == transparencyKey.b &&
+        pixelData[i].a == transparencyKey.a) {
+      pixelData[i].a = 0; // Set alpha to 0
+    }
+  }
+
+  // Initialize the Image for the tile
+  Image img = {.data = pixelData, // Directly assign the pixel data
+               .width = TILE_SIZE,
+               .height = TILE_SIZE,
+               .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
+               .mipmaps = 1};
+
+  texture = LoadTextureFromImage(img);
+  return texture;
+}
+
 // Database functions
 Edge *loadEdges(sqlite3 *db) {
 
-  // Database Initialization
-  if (sqlite3_open("test.db", &db) == SQLITE_OK) {
-    printf("Database opened successfully.\n");
-  } else {
+  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
     printf("Error opening database: %s\n", sqlite3_errmsg(db));
+    return NULL;
   };
 
   // Get number of tile types
   const char *countQuery =
       "SELECT COUNT(DISTINCT tile_key) FROM texture WHERE type = 'edge';";
-  sqlite3_stmt *countStmt;
 
-  if (sqlite3_prepare_v2(db, countQuery, -1, &countStmt, NULL) == SQLITE_OK) {
-    if (sqlite3_step(countStmt) == SQLITE_ROW) {
-      countEdges = sqlite3_column_int(countStmt, 0);
-    }
-  } else {
-    printf("Error preparing count query: %s\n", sqlite3_errmsg(db));
-    sqlite3_finalize(countStmt);
+  countEdges = executeScalarQuery(db, countQuery);
+  if (countEdges == -1) {
+    sqlite3_close(db);
     return NULL;
   }
-  sqlite3_finalize(countStmt);
 
   // Allocate memory for Edge structs
   Edge *edgeTypes = (Edge *)malloc(countEdges * sizeof(Edge));
@@ -45,12 +96,9 @@ Edge *loadEdges(sqlite3 *db) {
   const char *edgeQuery =
       "SELECT tile_key, data FROM texture WHERE type = 'edge';";
   sqlite3_stmt *edgeStmt;
-
   if (sqlite3_prepare_v2(db, edgeQuery, -1, &edgeStmt, NULL) == SQLITE_OK) {
-
     int currentIndex = -1;
     int textureIndex = 1;
-
     while (sqlite3_step(edgeStmt) == SQLITE_ROW) {
       int tileKey = sqlite3_column_int(edgeStmt, 0);
       const unsigned char *blobData = sqlite3_column_blob(edgeStmt, 1);
@@ -72,46 +120,9 @@ Edge *loadEdges(sqlite3 *db) {
         continue;
       }
 
-      // Verify blob size matches expected size (32x32 pixels * 4 bytes
-      // per pixel)
-      if (blobSize != TILE_SIZE * TILE_SIZE * 4) {
-        printf("Error: Invalid blob size %d (expected %d)\n", blobSize,
-               TILE_SIZE * TILE_SIZE * 4);
-        continue;
-      }
-
-      // Create color array for the texture
-      Color pixelData[TILE_SIZE * TILE_SIZE];
-
-      // Parse blob data into Color array
-      for (int i = 0; i < TILE_SIZE * TILE_SIZE; i++) {
-        // Each pixel is 4 bytes (RGBA)
-        int offset = i * 4;
-        pixelData[i] = (Color){
-            blobData[offset],     // R
-            blobData[offset + 1], // G
-            blobData[offset + 2], // B
-            blobData[offset + 3]  // A
-        };
-
-        // Apply transparency key
-        if (pixelData[i].r == transparencyKey.r &&
-            pixelData[i].g == transparencyKey.g &&
-            pixelData[i].b == transparencyKey.b &&
-            pixelData[i].a == transparencyKey.a) {
-          pixelData[i].a = 0; // Set alpha to 0
-        }
-      }
-
-      // Initialize the Image for the tile
-      Image img = {.data = pixelData, // Directly assign the pixel data
-                   .width = TILE_SIZE,
-                   .height = TILE_SIZE,
-                   .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
-                   .mipmaps = 1};
-
       // Populate edge with texture
-      edgeTypes[currentIndex].edges[textureIndex] = LoadTextureFromImage(img);
+      edgeTypes[currentIndex].edges[textureIndex] =
+          loadTextureFromBlob(blobData, blobSize);
       textureIndex++;
     }
 
@@ -120,44 +131,36 @@ Edge *loadEdges(sqlite3 *db) {
   }
   sqlite3_finalize(edgeStmt);
   sqlite3_close(db);
-
   return edgeTypes;
 }
 
 Tile *loadTiles(sqlite3 *db) {
 
   // Database Initialization
-  if (sqlite3_open("test.db", &db) == SQLITE_OK) {
-    printf("Database opened successfully.\n");
-  } else {
+  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
     printf("Error opening database: %s\n", sqlite3_errmsg(db));
+    return NULL;
   };
 
-  // Initialize variables
-  Tile *tileTypes;
-  int countTiles;
-
   // Get number of tile types
-  const char *countQuery =
-      "SELECT COUNT(DISTINCT tile_key), MAX(tile_key) FROM tile;";
-  sqlite3_stmt *countStmt;
-
-  if (sqlite3_prepare_v2(db, countQuery, -1, &countStmt, NULL) == SQLITE_OK) {
-    if (sqlite3_step(countStmt) == SQLITE_ROW) {
-      countTiles = sqlite3_column_int(countStmt, 0);
-      maxTileKey = sqlite3_column_int(countStmt, 1);
-    }
-  } else {
-    printf("Error preparing count query: %s\n", sqlite3_errmsg(db));
-    sqlite3_finalize(countStmt);
+  const char *countQuery = "SELECT COUNT(DISTINCT tile_key) FROM tile;";
+  const char *maxQuery = "SELECT MAX(tile_key) FROM tile;";
+  int countTiles = executeScalarQuery(db, countQuery);
+  if (countTiles == -1) {
+    sqlite3_close(db);
     return NULL;
   }
-  sqlite3_finalize(countStmt);
+  maxTileKey = executeScalarQuery(db, maxQuery);
+  if (maxTileKey == -1) {
+    sqlite3_close(db);
+    return NULL;
+  }
 
   // Allocate memory for the tiles
-  tileTypes = (Tile *)malloc(countTiles * sizeof(Tile));
+  Tile *tileTypes = (Tile *)malloc(countTiles * sizeof(Tile));
   if (tileTypes == NULL) {
     printf("Memory allocation failed\n");
+    sqlite3_close(db);
     return NULL;
   }
 
@@ -186,36 +189,7 @@ Tile *loadTiles(sqlite3 *db) {
           const unsigned char *blobData = sqlite3_column_blob(texStmt, 0);
           int blobSize = sqlite3_column_bytes(texStmt, 0);
 
-          // Verify blob size matches expected size (32x32 pixels * 4
-          // bytes per pixel)
-          if (blobSize != TILE_SIZE * TILE_SIZE * 4) {
-            printf("Error: Invalid blob size %d (expected %d)\n", blobSize,
-                   TILE_SIZE * TILE_SIZE * 4);
-            continue;
-          }
-
-          // Create color array for the texture
-          Color pixelData[TILE_SIZE * TILE_SIZE];
-
-          // Parse blob data into Color array
-          for (int i = 0; i < TILE_SIZE * TILE_SIZE; i++) {
-            // Each pixel is 4 bytes (RGBA)
-            int offset = i * 4;
-            pixelData[i] = (Color){
-                blobData[offset],     // R
-                blobData[offset + 1], // G
-                blobData[offset + 2], // B
-                blobData[offset + 3]  // A
-            };
-          }
-
-          // Initialize the Image for the tile
-          Image img = {.data = pixelData, // Directly assign the pixel data
-                       .width = TILE_SIZE,
-                       .height = TILE_SIZE,
-                       .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
-                       .mipmaps = 1};
-          Texture2D loadedTex = LoadTextureFromImage(img);
+          Texture2D loadedTex = loadTextureFromBlob(blobData, blobSize);
           tex[texCount] = loadedTex;
           texCount++;
         }
@@ -236,43 +210,33 @@ Tile *loadTiles(sqlite3 *db) {
 
       printf("Tile %d created", tileKey);
     }
-
   } else {
     printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
   }
   sqlite3_finalize(tileStmt);
   sqlite3_close(db);
-
   return tileTypes;
 }
 
 Wall *loadWalls(sqlite3 *db) {
 
   // Database Initialization
-  if (sqlite3_open("test.db", &db) == SQLITE_OK) {
-    printf("Database opened successfully.\n");
-  } else {
+  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
     printf("Error opening database: %s\n", sqlite3_errmsg(db));
+    return NULL;
   };
 
   // Initialize variables
   Wall *wallTypes;
   int countWalls;
 
-  // Get number of tile types
+  // Get number of wall types
   const char *countQuery = "SELECT COUNT(DISTINCT wall_key) FROM wall;";
-  sqlite3_stmt *countStmt;
-
-  if (sqlite3_prepare_v2(db, countQuery, -1, &countStmt, NULL) == SQLITE_OK) {
-    if (sqlite3_step(countStmt) == SQLITE_ROW) {
-      countWalls = sqlite3_column_int(countStmt, 0);
-    }
-  } else {
-    printf("Error preparing count query: %s\n", sqlite3_errmsg(db));
-    sqlite3_finalize(countStmt);
+  countWalls = executeScalarQuery(db, countQuery);
+  if (countWalls == -1) {
+    sqlite3_close(db);
     return NULL;
   }
-  sqlite3_finalize(countStmt);
 
   // Allocate memory for the walls
   wallTypes = (Wall *)malloc(countWalls * sizeof(Wall));
@@ -311,42 +275,13 @@ Wall *loadWalls(sqlite3 *db) {
           const unsigned char *quadrantDescription =
               sqlite3_column_text(texStmt, 3);
 
-          // Verify blob size matches expected size (32x32 pixels * 4
-          // bytes per pixel)
-          if (blobSize != TILE_SIZE * TILE_SIZE * 4) {
-            printf("Error: Invalid blob size %d (expected %d)\n", blobSize,
-                   TILE_SIZE * TILE_SIZE * 4);
-            continue;
-          }
-
-          // Create color array for the texture
-          Color pixelData[TILE_SIZE * TILE_SIZE];
-
-          // Parse blob data into Color array
-          for (int i = 0; i < TILE_SIZE * TILE_SIZE; i++) {
-            // Each pixel is 4 bytes (RGBA)
-            int offset = i * 4;
-            pixelData[i] = (Color){
-                blobData[offset],     // R
-                blobData[offset + 1], // G
-                blobData[offset + 2], // B
-                blobData[offset + 3]  // A
-            };
-          }
-
-          // Initialize the Image for the tile
-          Image img = {.data = pixelData, // Directly assign the pixel data
-                       .width = TILE_SIZE,
-                       .height = TILE_SIZE,
-                       .format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8,
-                       .mipmaps = 1};
-          Texture2D loadedTex = LoadTextureFromImage(img);
+          Texture2D loadedTex = loadTextureFromBlob(blobData, blobSize);
 
           wallTex[texCount] = (WallTexture){
               .tex = loadedTex,
               .wall_quadrant_key = wallQuadrantKey,
               .primary_quadrant_indicator = primaryQuadrantIndicator,
-              .quadrant_description = quadrantDescription};
+              .quadrant_description = (const char *)quadrantDescription};
           texCount++;
         }
       } else {
@@ -356,8 +291,8 @@ Wall *loadWalls(sqlite3 *db) {
 
       wallTypes[wallKey] = (Wall){.wallKey = wallKey,
                                   .wallTex = {{{0}}},
-                                  .name = name,
-                                  .orientation = orientation};
+                                  .name = (const char *)name,
+                                  .orientation = (const char *)orientation};
 
       // Explicitly copy the textures
       memcpy(wallTypes[wallKey].wallTex, wallTex,
@@ -369,17 +304,15 @@ Wall *loadWalls(sqlite3 *db) {
   }
   sqlite3_finalize(wallStmt);
   sqlite3_close(db);
-
   return wallTypes;
 }
 
 void loadMap(sqlite3 *db, const char *table) {
 
   // Database Initialization
-  if (sqlite3_open("test.db", &db) == SQLITE_OK) {
-    printf("Database opened successfully.\n");
-  } else {
+  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
     printf("Error opening database: %s\n", sqlite3_errmsg(db));
+    return;
   };
 
   // Buffers to hold queries
@@ -394,32 +327,37 @@ void loadMap(sqlite3 *db, const char *table) {
   if (sqlite3_prepare_v2(db, mapQuery, -1, &mapStmt, NULL) == SQLITE_OK) {
     memset(currentMap.grid, 0, sizeof(currentMap.grid));
     memset(currentMap.edges, 0, sizeof(currentMap.edges));
+
     while (sqlite3_step(mapStmt) == SQLITE_ROW) {
       int x = sqlite3_column_int(mapStmt, 0);
       int y = sqlite3_column_int(mapStmt, 1);
       int tileKey = sqlite3_column_int(mapStmt, 2);
       int tileStyle = sqlite3_column_int(mapStmt, 3);
       int wallKey = sqlite3_column_int(mapStmt, 4);
-      currentMap.grid[x][y][0] = tileKey;
-      currentMap.grid[x][y][1] = tileStyle;
-      currentMap.grid[x][y][2] = wallKey;
+
+      if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+        currentMap.grid[x][y][0] = tileKey;   // Store tile_key
+        currentMap.grid[x][y][1] = tileStyle; // Store tile_style
+        currentMap.grid[x][y][2] = wallKey;   // Store wall_key
+      } else {
+        printf("Warning: Map coordinate (%d, %d) out of bounds.\n", x, y);
+      }
     }
   } else {
     printf("Error preparing SQL query: %s\n", sqlite3_errmsg(db));
   }
   sqlite3_finalize(mapStmt);
   sqlite3_close(db);
-  currentMap.name = table;
+  currentMap.name = (const char *)table;
   printf("Map table \"%s\" successfully loaded\n", currentMap.name);
 }
 
 void saveMap(sqlite3 *db, char *table) {
 
   // Database Initialization
-  if (sqlite3_open("test.db", &db) == SQLITE_OK) {
-    printf("Database opened successfully.\n");
-  } else {
+  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
     printf("Error opening database: %s\n", sqlite3_errmsg(db));
+    return;
   };
 
   // Buffer to hold query
@@ -463,9 +401,14 @@ void saveMap(sqlite3 *db, char *table) {
 
   // Insert map grid
   if (sqlite3_prepare_v2(db, insertQuery, -1, &insertStmt, NULL) == SQLITE_OK) {
+
+    // Begin transaction for faster inserts
+    sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
+
     for (int x = 0; x < GRID_SIZE; x++) {
       for (int y = 0; y < GRID_SIZE; y++) {
-        if (currentMap.grid[x][y][0] != 0) {
+        // Save non-empty cells (tileKey != 0 or potentially wallKey != 0)
+        if (currentMap.grid[x][y][0] != 0 || currentMap.grid[x][y][2] != 0) {
           int tileKey = currentMap.grid[x][y][0];
           int tileStyle = currentMap.grid[x][y][1];
           int wallKey = currentMap.grid[x][y][2];
@@ -474,15 +417,25 @@ void saveMap(sqlite3 *db, char *table) {
           sqlite3_bind_int(insertStmt, 3, tileKey);   // Bind tile_key
           sqlite3_bind_int(insertStmt, 4, tileStyle); // Bind tile_style
           sqlite3_bind_int(insertStmt, 5, wallKey);   // Bind wall_key
-          sqlite3_step(insertStmt);
-          sqlite3_reset(insertStmt);
+
+          if (sqlite3_step(insertStmt) != SQLITE_DONE) {
+            printf("Error inserting map data at (%d, %d): %s\n", x, y,
+                   sqlite3_errmsg(db));
+          }
+          sqlite3_reset(insertStmt); // Reset for next iteration
+
+          // Bindings automatically cleared by reset in recent versions, but
+          // explicit clear is safe.
           sqlite3_clear_bindings(insertStmt);
         }
       }
     }
+    // End transaction
+    sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL);
+    printf("Map table \"%s\" successfully saved.\n", table);
   } else {
     return;
   }
-  sqlite3_finalize(insertStmt);
+  sqlite3_finalize(insertStmt); // Finalize insert statement if it was prepared
   sqlite3_close(db);
 }
