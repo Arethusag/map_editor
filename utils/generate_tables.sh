@@ -30,5 +30,3 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     fi 
     
 done < "$config_file"
-
-

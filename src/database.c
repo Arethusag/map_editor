@@ -207,8 +207,7 @@ Tile *loadTiles(sqlite3 *db) {
 
       // Explicitly copy the textures
       memcpy(tileTypes[tileKey].tex, tex, sizeof(Texture2D) * texCount);
-
-      printf("Tile %d created", tileKey);
+      printf("Tile %d created\n", tileKey);
     }
   } else {
     printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
@@ -228,18 +227,18 @@ Wall *loadWalls(sqlite3 *db) {
 
   // Initialize variables
   Wall *wallTypes;
-  int countWalls;
 
   // Get number of wall types
-  const char *countQuery = "SELECT COUNT(DISTINCT wall_key) FROM wall;";
-  countWalls = executeScalarQuery(db, countQuery);
-  if (countWalls == -1) {
+  const char *maxQuery = "SELECT MAX(wall_key) FROM wall;";
+
+  int maxWalls = executeScalarQuery(db, maxQuery);
+  if (maxWalls == -1) {
     sqlite3_close(db);
     return NULL;
   }
 
   // Allocate memory for the walls
-  wallTypes = (Wall *)malloc(countWalls * sizeof(Wall));
+  wallTypes = (Wall *)malloc((maxWalls + 1) * sizeof(Wall));
   if (wallTypes == NULL) {
     printf("Memory allocation failed\n");
     return NULL;
@@ -255,50 +254,52 @@ Wall *loadWalls(sqlite3 *db) {
       const unsigned char *orientation = sqlite3_column_text(wallStmt, 2);
 
       WallTexture wallTex[4];
-      int texCount = 0;
-      char wallKeyStr[12];
+      char wallKeyStr[20];
       snprintf(wallKeyStr, sizeof(wallKeyStr), "%d", wallKey);
       const char *texQuery =
-          "SELECT data, wall_quadrant.wall_quadrant_key, "
-          "primary_quadrant_indicator, quadrant_description"
+          "SELECT data, wall_quadrant.wall_quadrant_key, quadrant_key, "
+          "primary_quadrant_indicator, quadrant_description "
           "FROM wall_quadrant LEFT JOIN texture "
-          "ON wall_quadrant.wall_key = texture.wall_quadrant_key"
+          "ON wall_quadrant.wall_quadrant_key = texture.wall_quadrant_key "
           "WHERE wall_key = ?;";
       sqlite3_stmt *texStmt;
+
       if (sqlite3_prepare_v2(db, texQuery, -1, &texStmt, NULL) == SQLITE_OK) {
         sqlite3_bind_text(texStmt, 1, wallKeyStr, -1, SQLITE_TRANSIENT);
         while (sqlite3_step(texStmt) == SQLITE_ROW) {
           const unsigned char *blobData = sqlite3_column_blob(texStmt, 0);
           int blobSize = sqlite3_column_bytes(texStmt, 0);
           int wallQuadrantKey = sqlite3_column_int(texStmt, 1);
-          int primaryQuadrantIndicator = sqlite3_column_int(texStmt, 2);
+          int quadrantKey = sqlite3_column_int(texStmt, 2);
+          int primaryQuadrantIndicator = sqlite3_column_int(texStmt, 3);
           const unsigned char *quadrantDescription =
-              sqlite3_column_text(texStmt, 3);
+              sqlite3_column_text(texStmt, 4);
 
           Texture2D loadedTex = loadTextureFromBlob(blobData, blobSize);
 
-          wallTex[texCount] = (WallTexture){
+          wallTex[quadrantKey - 1] = (WallTexture){
               .tex = loadedTex,
               .wall_quadrant_key = wallQuadrantKey,
+              .quadrant_key = quadrantKey,
               .primary_quadrant_indicator = primaryQuadrantIndicator,
-              .quadrant_description = (const char *)quadrantDescription};
-          texCount++;
+              .quadrant_description =
+                  "place_holder"}; // TODO: Fix description copy
         }
       } else {
         printf("Error preparing texture query: %s\n", sqlite3_errmsg(db));
       }
       sqlite3_finalize(texStmt);
 
-      wallTypes[wallKey] = (Wall){.wallKey = wallKey,
-                                  .wallTex = {{{0}}},
-                                  .name = (const char *)name,
-                                  .orientation = (const char *)orientation};
+      wallTypes[wallKey] =
+          (Wall){.wallKey = wallKey,
+                 .wallTex = {{{0}}},
+                 .name = "place holder",         // TODO: Fix name copy
+                 .orientation = "place holder"}; // TODO: Fix orientation copy
 
       // Explicitly copy the textures
-      memcpy(wallTypes[wallKey].wallTex, wallTex,
-             sizeof(WallTexture) * texCount);
+      memcpy(wallTypes[wallKey].wallTex, wallTex, 4 * sizeof(WallTexture));
+      printf("Tile %d created\n", wallKey);
     }
-
   } else {
     printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
   }
@@ -320,7 +321,7 @@ void loadMap(sqlite3 *db, const char *table) {
 
   // Format Map Query
   snprintf(mapQuery, sizeof(mapQuery),
-           "SELECT x, y, tile_key, tile_style FROM %s;", table);
+           "SELECT x, y, tile_key, tile_style, wall_key FROM %s;", table);
   sqlite3_stmt *mapStmt;
 
   // Create map grid

@@ -3,6 +3,9 @@
 #include "database.h"
 #include "edge.h"
 #include "grid.h"
+#include <raylib.h>
+#include <sqlite3.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -135,8 +138,8 @@ void applyTiles(Map *map, int placedTiles[][3], int placedCount,
   }
 }
 
-void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera,
-                     int screenWidth, int screenHeight) {
+void drawExistingMap(Map *map, Tile tileTypes[], Wall wallTypes[],
+                     Camera2D camera, int screenWidth, int screenHeight) {
 
   // Get the visible bounds of the grid
   WorldCoords bounds = GetVisibleGridBounds(camera, screenWidth, screenHeight);
@@ -146,6 +149,7 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera,
     for (int y = bounds.startY; y <= bounds.endY; y++) {
       int tileKey = map->grid[x][y][0];
       int tileStyle = map->grid[x][y][1];
+      int wallKey = map->grid[x][y][2];
 
       // Draw the ground tile for each grid cell
       Texture2D tileTexture = tileTypes[tileKey].tex[tileStyle];
@@ -159,9 +163,16 @@ void drawExistingMap(Map *map, Tile tileTypes[], Camera2D camera,
         DrawTexture(edgeTexture, pos.x, pos.y, WHITE);
       }
 
-      // // Draw the wall for each grid cell
-      // Texture2D wallTexture = map->edgeCount[x][y];
-      // DrawTexture(wallTexture, pos.x, pos.y, WHITE);
+      if (wallKey != 0) {
+        Texture2D wallTexture = wallTypes[wallKey].wallTex[3].tex;
+        DrawTexture(wallTexture, pos.x, pos.y, WHITE);
+      }
+
+      int wallCount = map->wallCount[x][y];
+      for (int i = 0; i < wallCount; i++) {
+        Texture2D quadrantTexture = map->walls[x][y];
+        DrawTexture(quadrantTexture, pos.x, pos.y, WHITE);
+      }
     }
   }
 }

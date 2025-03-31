@@ -31,7 +31,7 @@ sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 3 WHERE x = 10 AND
 sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 17 WHERE x = 9 AND y = 11;"
 
 # Place 4 stone wall tiles
-sqlite3 "$DB_FILE" "Update map SET wall_key = 1 WHERE x = 7 AND y = 7;"
+sqlite3 "$DB_FILE" "UPDATE map SET wall_key = 1 WHERE x = 7 AND y = 7;"
 
 # Count total number of tiles
 sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM map;"
@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS wall(
     name TEXT NOT NULL,
     orientation NOT NULL
 ) WITHOUT rowid;
+INSERT INTO wall (wall_key, name, orientation)
+    VALUES (0, 'default', 'N/A')
 END_SQL
 
 # Create wall type table and insert records
@@ -124,8 +126,8 @@ echo "Generated $TOTAL_PIXELS pixels in $FILE"
 echo "File size: $(wc -c < "$FILE") bytes"
 
 # Insert the binary data into SQLite
-sqlite3 "$DB_FILE" "INSERT INTO texture (texture_key, type, name, style, source, tile_key, data) 
-    VALUES (0, 'tile', 'default', 0, 'setup.sh', 0, readfile('$FILE')) ;"
+sqlite3 "$DB_FILE" "INSERT INTO texture (texture_key, type, name, style, source, tile_key, wall_quadrant_key, data) 
+    VALUES (0, 'tile', 'default', 0, 'setup.sh', 0, 0, readfile('$FILE')) ;"
 
 sqlite3 "$DB_FILE" <<'END_SQL'
 SELECT texture_key, type, name, style, source, length(data) as data_length,

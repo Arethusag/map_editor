@@ -7,6 +7,7 @@
 #include "edge.h"
 #include "grid.h"
 #include "undo.h"
+#include "wall.h"
 #include "window.h"
 
 // system headers
@@ -45,7 +46,9 @@ int main() {
   // Load textures
   Tile *tileTypes = loadTiles(db);
   Edge *edgeTypes = loadEdges(db);
+  Wall *wallTypes = loadWalls(db);
   computeMapEdges(tileTypes, edgeTypes);
+  computeMapWalls(wallTypes);
 
   // Initialize Undo/Redo manager
   UndoRedoManager *manager = (UndoRedoManager *)malloc(sizeof(UndoRedoManager));
@@ -85,7 +88,6 @@ int main() {
 
   // Event loop
   while (!WindowShouldClose()) {
-
     // Handle window resizing
     HandleWindowResize(&windowState, &camera);
 
@@ -157,8 +159,8 @@ int main() {
     BeginMode2D(camera);
 
     // Draw existing map
-    drawExistingMap(&currentMap, tileTypes, camera, windowState.width,
-                    windowState.height);
+    drawExistingMap(&currentMap, tileTypes, wallTypes, camera,
+                    windowState.width, windowState.height);
 
     // Handle mouse input and drawing
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && IsKeyDown(KEY_LEFT_SHIFT)) {

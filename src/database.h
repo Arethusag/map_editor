@@ -34,13 +34,15 @@ typedef struct Map {
   // 12 possible types of ground edges
   Texture2D edges[GRID_SIZE][GRID_SIZE][12];
   // 2 possible types of wall edges
-  Texture2D wallEdges[GRID_SIZE][GRID_SIZE][2];
+  Texture2D walls[GRID_SIZE][GRID_SIZE];
   int edgeCount[GRID_SIZE][GRID_SIZE];
+  int wallCount[GRID_SIZE][GRID_SIZE];
 } Map;
 
 typedef struct WallTexture {
   Texture2D tex;
   int wall_quadrant_key;
+  int quadrant_key;
   int primary_quadrant_indicator;
   const char *quadrant_description;
 } WallTexture;
@@ -58,6 +60,7 @@ extern int maxTileKey;
 extern Map currentMap;
 
 // Function prototypes
+Texture2D loadTextureFromBlob(const unsigned char *blobData, int blobSize);
 Edge *loadEdges(sqlite3 *db);
 Tile *loadTiles(sqlite3 *db);
 Wall *loadWalls(sqlite3 *db);

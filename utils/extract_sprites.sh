@@ -92,7 +92,7 @@ VALUES (
 );
 EOF
     
-    echo "Processed: Tile $tile_num → ${base_name} (stored in database)"
+echo "Processed: Sprite $sprite_pos @ ($x,$y) → ${base_name} (stored in database)"
     
     # Clean up binary file
     rm "$bin_file"

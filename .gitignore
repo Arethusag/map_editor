@@ -2,3 +2,4 @@ Session.vim
 main
 test.db
 src/*.o
+assets/*grid.png
