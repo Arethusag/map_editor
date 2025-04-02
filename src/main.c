@@ -25,7 +25,7 @@ bool inCommandMode = false;
 int activeTileKey = 0;
 int countEdges;
 int maxTileKey;
-Map currentMap;
+Map currentMap = {0};
 sqlite3 *db;
 Camera2D camera = {0};
 

@@ -169,8 +169,8 @@ void drawExistingMap(Map *map, Tile tileTypes[], Wall wallTypes[],
       }
 
       int wallCount = map->wallCount[x][y];
-      for (int i = 0; i < wallCount; i++) {
-        Texture2D quadrantTexture = map->walls[x][y];
+      for (int j = 0; j < wallCount; j++) {
+        Texture2D quadrantTexture = map->walls[x][y][j];
         DrawTexture(quadrantTexture, pos.x, pos.y, WHITE);
       }
     }

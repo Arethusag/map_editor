@@ -12,29 +12,11 @@ CREATE TABLE IF NOT EXISTS map(
     tile_style INTEGER NOT NULL,
     wall_key INTEGER NOT NULL,
     FOREIGN KEY (tile_key) REFERENCES tile(tile_key),
-    FOREIGN KEY (wall_key) REFERENCES wall(wall_key)
+    FOREIGN KEY (wall_key) REFERENCES wall(wall_key),
+    PRIMARY KEY (x, y)
 );
 
 END_SQL
-
-# Insert default tile 0 into all map grid cells
-for ((x=0; x<GRID_SIZE; x++)); do
-    for ((y=0; y<GRID_SIZE; y++)); do
-        sqlite3 "$DB_FILE" "INSERT INTO map (x, y, tile_key, tile_style, wall_key) VALUES ($x,$y,$((0)),$((0)),$((0)));"
-    done
-done
-
-# Place 4 grass tiles
-sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 0 WHERE x = 3 AND y = 3;"
-sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 1 WHERE x = 4 AND y = 4;"
-sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 3 WHERE x = 10 AND y = 10;"
-sqlite3 "$DB_FILE" "UPDATE map SET tile_key = 1, tile_style = 17 WHERE x = 9 AND y = 11;"
-
-# Place 4 stone wall tiles
-sqlite3 "$DB_FILE" "UPDATE map SET wall_key = 1 WHERE x = 7 AND y = 7;"
-
-# Count total number of tiles
-sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM map;"
 
 # Create tile table and insert records
 sqlite3 "$DB_FILE" <<'END_SQL'
@@ -141,4 +123,5 @@ bash utils/extract_sprites.sh
 # Generate tables
 bash utils/generate_tables.sh
 
-
+# Insert sample map
+bash utils/insert_sample_map.sh

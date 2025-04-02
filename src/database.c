@@ -328,6 +328,9 @@ void loadMap(sqlite3 *db, const char *table) {
   if (sqlite3_prepare_v2(db, mapQuery, -1, &mapStmt, NULL) == SQLITE_OK) {
     memset(currentMap.grid, 0, sizeof(currentMap.grid));
     memset(currentMap.edges, 0, sizeof(currentMap.edges));
+    memset(currentMap.walls, 0, sizeof(currentMap.walls));
+    memset(currentMap.wallCount, 0, sizeof(currentMap.wallCount));
+    memset(currentMap.edgeCount, 0, sizeof(currentMap.edgeCount));
 
     while (sqlite3_step(mapStmt) == SQLITE_ROW) {
       int x = sqlite3_column_int(mapStmt, 0);
