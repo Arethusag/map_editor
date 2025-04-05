@@ -82,6 +82,11 @@ int main() {
   drawState.isDrawing = false;
   drawState.drawnTilesCount = 0;
 
+  // Initialize command state
+  CommandState commandState = {0};
+  commandState.commandIndex = 0;
+  commandState.inCommandMode = false;
+
   // Event loop
   while (!WindowShouldClose()) {
 
@@ -277,9 +282,8 @@ int main() {
     EndMode2D();
 
     // Handle command mode
-    handleCommandMode(command, &commandIndex, &inCommandMode,
-                      windowState.height, windowState.width, tileTypes,
-                      edgeTypes, db, &drawState);
+    handleCommandMode(&commandState, windowState.height, windowState.width,
+                      tileTypes, edgeTypes, db, &drawState);
 
     EndDrawing();
   }

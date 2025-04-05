@@ -7,9 +7,10 @@
 #include <string.h>
 
 void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
-                  drawingState *drawState) {
-  if (strncmp(command, ":tile ", 6) == 0) {
-    char *tileKeyStr = command + 6;
+                  drawingState *drawState, CommandState *commandState) {
+
+  if (strncmp(commandState->commandBuffer, ":tile ", 6) == 0) {
+    char *tileKeyStr = commandState->commandBuffer + 6;
     char *endptr;
     long tileKey = strtol(tileKeyStr, &endptr, 10);
     if (*endptr == '\0') {
@@ -23,13 +24,13 @@ void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
     } else {
       printf("Invalid tile key\n");
     }
-  } else if (strncmp(command, ":load ", 6) == 0) {
-    char *table = &command[6];
+  } else if (strncmp(commandState->commandBuffer, ":load ", 6) == 0) {
+    char *table = &commandState->commandBuffer[6];
     loadMap(db, table);
     computeMapEdges(tileTypes, edgeTypes);
     printf("Map loaded: %s\n", table);
-  } else if (strncmp(command, ":save ", 6) == 0) {
-    char *table = &command[6];
+  } else if (strncmp(commandState->commandBuffer, ":save ", 6) == 0) {
+    char *table = &commandState->commandBuffer[6];
     saveMap(db, table);
     printf("Map saved: %s\n", table);
   } else {
@@ -37,49 +38,48 @@ void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
   }
 }
 
-void handleCommandMode(char *command, unsigned int *commandIndex,
-                       bool *inCommandMode, int screenHeight, int screenWidth,
-                       Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
-                       drawingState *drawState) {
+void handleCommandMode(CommandState *commandState, int screenHeight,
+                       int screenWidth, Tile tileTypes[], Edge edgeTypes[],
+                       sqlite3 *db, drawingState *drawState) {
 
   // Command mode entry
   if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
     if (IsKeyPressed(KEY_SEMICOLON)) {
       printf("Entering command mode\n");
-      *inCommandMode = true;
-      *commandIndex = 0;
-      memset(command, 0, 256);
+      commandState->inCommandMode = true;
+      commandState->commandIndex = 0;
+      memset(commandState->commandBuffer, 0, 256);
     }
   }
 
-  if (*inCommandMode) {
+  if (commandState->inCommandMode) {
     // Handle character input
     int key = GetCharPressed();
     while (key > 0) { // Process all queued characters
-      if (key >= 32 && key <= 126 && *commandIndex < 255) {
-        command[*commandIndex] = (char)key;
-        (*commandIndex)++;
-        command[*commandIndex] = '\0';
+      if (key >= 32 && key <= 126 && commandState->commandIndex < 255) {
+        commandState->commandBuffer[commandState->commandIndex] = (char)key;
+        (commandState->commandIndex)++;
+        commandState->commandBuffer[commandState->commandIndex] = '\0';
       }
       key = GetCharPressed(); // Get next character in queue
     }
 
     // Handle backspace
-    if (IsKeyPressed(KEY_BACKSPACE) && *commandIndex > 0) {
-      (*commandIndex)--;
-      command[*commandIndex] = '\0';
+    if (IsKeyPressed(KEY_BACKSPACE) && commandState->commandIndex > 0) {
+      (commandState->commandIndex)--;
+      commandState->commandBuffer[commandState->commandIndex] = '\0';
     }
 
     // Handle command execution or exit
     if (IsKeyPressed(KEY_ENTER)) {
-      printf("Command entered: %s\n", command);
-      parseCommand(tileTypes, edgeTypes, db, drawState);
-      *inCommandMode = false;
+      printf("Command entered: %s\n", commandState->commandBuffer);
+      parseCommand(tileTypes, edgeTypes, db, drawState, commandState);
+      commandState->inCommandMode = false;
     } else if (IsKeyPressed(KEY_ESCAPE)) {
-      *inCommandMode = false;
+      commandState->inCommandMode = false;
     }
 
     DrawRectangle(0, screenHeight - 30, screenWidth, 30, DARKGRAY);
-    DrawText(command, 10, screenHeight - 25, 20, RAYWHITE);
+    DrawText(commandState->commandBuffer, 10, screenHeight - 25, 20, RAYWHITE);
   }
 }
