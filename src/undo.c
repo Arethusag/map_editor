@@ -42,7 +42,7 @@ void createTileChangeBatch(UndoRedoManager *manager, Map *map,
 
   batch->changes = changes; // Point to the changes array
   batch->changeCount = drawnTilesCount;
-  batch->visitedTiles = (int(*)[2])malloc(visitedCount * sizeof(int[2]));
+  batch->visitedTiles = (int (*)[2])malloc(visitedCount * sizeof(int[2]));
   memcpy(batch->visitedTiles, visitedTiles, visitedCount * sizeof(int[2]));
   batch->visitedCount = visitedCount;
   batch->next = NULL;

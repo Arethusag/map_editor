@@ -22,7 +22,6 @@
 char command[256] = {0};
 unsigned int commandIndex = 0;
 bool inCommandMode = false;
-int activeTileKey = 0;
 int countEdges;
 int maxTileKey;
 Map currentMap = {0};
@@ -74,20 +73,18 @@ int main() {
   cameraState.isPanning = false;
   cameraState.lastMousePosition = (Vector2){0, 0};
 
-  // Drawing state
-  bool isShiftDrawing = false; // Box mode
-  bool isCtrlDrawing = false;  // Pathing mode
-  bool isDrawing = false;      // Painter mode
-
-  int drawnTilesCount = 0;
-  int drawnTiles[GRID_SIZE * GRID_SIZE][3]; // 0=x; 1=y; 2=style
-
-  // Initialize mouse vectors
-  Vector2 startPos = {0};
-  Vector2 mousePos;
+  // Initialize drawing state
+  drawingState drawState = {0};
+  drawState.drawType = DRAW_TILE; // Start in tile drawing mode
+  drawState.mode = MODE_PAINTER;  // Default mode is painter
+  drawState.activeTileKey = 0;    // Initialize to a default tile
+  drawState.activeWallKey = 0;    // Initialize to a default wall
+  drawState.isDrawing = false;
+  drawState.drawnTilesCount = 0;
 
   // Event loop
   while (!WindowShouldClose()) {
+
     // Handle window resizing
     HandleWindowResize(&windowState, &camera);
 
@@ -104,25 +101,27 @@ int main() {
 
     if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
       cameraState.isPanning = true;
-      cameraState.lastMousePosition = mousePos;
+      cameraState.lastMousePosition = drawState.mousePos;
     } else if (IsMouseButtonReleased(MOUSE_BUTTON_RIGHT)) {
       cameraState.isPanning = false;
     }
 
     // Update camera position while panning
     if (cameraState.isPanning) {
-      Vector2 mouseDelta = {mousePos.x - cameraState.lastMousePosition.x,
-                            mousePos.y - cameraState.lastMousePosition.y};
+      Vector2 mouseDelta = {
+          drawState.mousePos.x - cameraState.lastMousePosition.x,
+          drawState.mousePos.y - cameraState.lastMousePosition.y};
 
       // Move camera opposite to mouse movement, adjusted for zoom
       camera.target.x -= mouseDelta.x / camera.zoom;
       camera.target.y -= mouseDelta.y / camera.zoom;
 
-      cameraState.lastMousePosition = mousePos;
+      cameraState.lastMousePosition = drawState.mousePos;
     }
 
     // Get mouse position in world coordinates
-    mousePos = GetMousePosition();
+    Vector2 screenMousePos = GetMousePosition();
+    drawState.mousePos = screenMousePos;
 
     float wheel = GetMouseWheelMove();
     if (wheel != 0) {
@@ -155,87 +154,97 @@ int main() {
 
     BeginDrawing();
     ClearBackground(BLACK);
-
     BeginMode2D(camera);
 
     // Draw existing map
-    drawExistingMap(&currentMap, tileTypes, wallTypes, camera,
-                    windowState.width, windowState.height);
-
-    // Handle mouse input and drawing
-    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && IsKeyDown(KEY_LEFT_SHIFT)) {
-      // Drawing mode: box
-      drawnTilesCount = 0;
-      startPos = mousePos;
-      isShiftDrawing = true;
-    } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
-               IsKeyDown(KEY_LEFT_CONTROL)) {
-      // Drawing mode: pathing
-      drawnTilesCount = 0;
-      startPos = mousePos;
-      isCtrlDrawing = true;
-    } else if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) &&
-               !IsKeyDown(KEY_LEFT_SHIFT && !IsKeyDown(KEY_LEFT_CONTROL))) {
-      // Drawing mode: painter
-      drawnTilesCount = 0;
-      startPos = mousePos;
-      isDrawing = true;
+    if (!drawState.isDrawing) {
+      drawExistingMap(&currentMap, tileTypes, wallTypes, camera,
+                      windowState.width, windowState.height);
     }
 
-    if (isShiftDrawing) {
-      WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
+    // Check for starting a drawing action
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+      // Decide the drawing mode based on modifier keys
+      if (IsKeyDown(KEY_LEFT_SHIFT)) {
+        drawState.mode = MODE_BOX;
+      } else if (IsKeyDown(KEY_LEFT_CONTROL)) {
+        drawState.mode = MODE_PATHING;
+      } else {
+        drawState.mode = MODE_PAINTER;
+      }
+      // Store the position where drawing started
+      drawState.startPos = drawState.mousePos;
+      drawState.isDrawing = true;
+      drawState.drawnTilesCount = 0; // Clear previous preview data
+    }
 
-      // Calculate the size of the array based on the bounding box
-      int coordArraySize = getBoundingBoxSize(coords);
-      int coordArray[coordArraySize][2];
-      coordsToArray(coords, coordArray);
+    if (drawState.isDrawing) {
+      // Box (Shift) mode drawing
+      if (drawState.mode == MODE_BOX) {
+        WorldCoords coords =
+            getWorldGridCoords(drawState.startPos, drawState.mousePos, camera);
 
-      updateDrawnTiles(coordArray, coordArraySize, drawnTiles, &drawnTilesCount,
-                       activeTileKey, tileTypes);
-      drawPreview(&currentMap, drawnTiles, drawnTilesCount, tileTypes,
-                  edgeTypes, activeTileKey);
-    } else if (isCtrlDrawing) {
-      WorldCoords coords = getWorldGridCoords(startPos, mousePos, camera);
+        // Calculate the size of the array based on the bounding box
+        int coordArraySize = getBoundingBoxSize(coords);
+        int coordArray[coordArraySize][2];
+        coordsToArray(coords, coordArray);
 
-      int coordArraySize = (abs(coords.endX - coords.startX) +
-                            (abs(coords.endY - coords.startY)) + 1);
-      int coordArray[coordArraySize][2];
+        updateDrawnTiles(coordArray, coordArraySize, drawState.drawnTiles,
+                         &drawState.drawnTilesCount, drawState.activeTileKey,
+                         tileTypes);
+        drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                    windowState, camera);
 
-      calculatePath(coords, coordArray);
-      updateDrawnTiles(coordArray, coordArraySize, drawnTiles, &drawnTilesCount,
-                       activeTileKey, tileTypes);
-      drawPreview(&currentMap, drawnTiles, drawnTilesCount, tileTypes,
-                  edgeTypes, activeTileKey);
+        // Pathing (Ctrl) mode drawing
+      } else if (drawState.mode == MODE_PATHING) {
+        WorldCoords coords =
+            getWorldGridCoords(drawState.startPos, drawState.mousePos, camera);
 
-    } else if (isDrawing) {
+        int coordArraySize = (abs(coords.endX - coords.startX) +
+                              (abs(coords.endY - coords.startY)) + 1);
+        int coordArray[coordArraySize][2];
 
-      WorldCoords coords = getWorldGridCoords(mousePos, mousePos, camera);
-      int x = coords.endX;
-      int y = coords.endY;
+        calculatePath(coords, coordArray);
+        updateDrawnTiles(coordArray, coordArraySize, drawState.drawnTiles,
+                         &drawState.drawnTilesCount, drawState.activeTileKey,
+                         tileTypes);
+        drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                    windowState, camera);
 
-      int alreadyVisited = 0;
-      for (int j = 0; j < drawnTilesCount; j++) {
-        if (drawnTiles[j][0] == x && drawnTiles[j][1] == y) {
-          alreadyVisited = 1;
-          break;
+        // Painter mode drawing
+      } else if (drawState.mode == MODE_PAINTER) {
+
+        WorldCoords coords =
+            getWorldGridCoords(drawState.mousePos, drawState.mousePos, camera);
+        int x = coords.endX;
+        int y = coords.endY;
+
+        int alreadyVisited = 0;
+        for (int j = 0; j < drawState.drawnTilesCount; j++) {
+          if (drawState.drawnTiles[j][0] == x &&
+              drawState.drawnTiles[j][1] == y) {
+            alreadyVisited = 1;
+            break;
+          }
         }
+
+        if (!alreadyVisited) {
+          int style = getRandTileStyle(drawState.activeTileKey, tileTypes);
+          drawState.drawnTiles[drawState.drawnTilesCount][0] = x;
+          drawState.drawnTiles[drawState.drawnTilesCount][1] = y;
+          drawState.drawnTiles[drawState.drawnTilesCount][2] = style;
+          drawState.drawnTilesCount++;
+        }
+
+        drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                    windowState, camera);
       }
-
-      if (!alreadyVisited) {
-        int style = getRandTileStyle(activeTileKey, tileTypes);
-        drawnTiles[drawnTilesCount][0] = x;
-        drawnTiles[drawnTilesCount][1] = y;
-        drawnTiles[drawnTilesCount][2] = style;
-        drawnTilesCount++;
-      }
-
-      drawPreview(&currentMap, drawnTiles, drawnTilesCount, tileTypes,
-                  edgeTypes, activeTileKey);
-
     } else {
-      // Draw cursor preview
-      WorldCoords coords = getWorldGridCoords(mousePos, mousePos, camera);
-      Texture2D tileTexture = tileTypes[activeTileKey].tex[0];
+
+      // Fallback: Draw a simple cursor preview if no drawing mode is active
+      WorldCoords coords =
+          getWorldGridCoords(drawState.mousePos, drawState.mousePos, camera);
+      Texture2D tileTexture = tileTypes[drawState.activeTileKey].tex[0];
       Vector2 tilePos = {coords.startX * TILE_SIZE, coords.startY * TILE_SIZE};
       DrawTexture(tileTexture, tilePos.x, tilePos.y, WHITE);
       DrawRectangleLines(tilePos.x, tilePos.y, TILE_SIZE, TILE_SIZE, RED);
@@ -246,23 +255,23 @@ int main() {
       // Get neighbors to placement
       int visitedTiles[GRID_SIZE * GRID_SIZE][2];
       int visitedCount = 0;
-      calculateEdgeGrid(drawnTiles, drawnTilesCount, visitedTiles,
-                        &visitedCount);
+      calculateEdgeGrid(drawState.drawnTiles, drawState.drawnTilesCount,
+                        visitedTiles, &visitedCount);
 
       // Add drawn tiles to undo/redo stack
-      createTileChangeBatch(manager, &currentMap, drawnTiles, drawnTilesCount,
-                            activeTileKey, visitedTiles, visitedCount);
+      createTileChangeBatch(manager, &currentMap, drawState.drawnTiles,
+                            drawState.drawnTilesCount, drawState.activeTileKey,
+                            visitedTiles, visitedCount);
 
       // Texture updates
-      applyTiles(&currentMap, drawnTiles, drawnTilesCount, activeTileKey);
+      applyTiles(&currentMap, drawState.drawnTiles, drawState.drawnTilesCount,
+                 drawState.activeTileKey);
       computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes,
                    edgeTypes);
 
-      memset(drawnTiles, 0, sizeof(drawnTiles));
+      memset(drawState.drawnTiles, 0, sizeof(drawState.drawnTiles));
 
-      isShiftDrawing = false;
-      isCtrlDrawing = false;
-      isDrawing = false;
+      drawState.isDrawing = false;
     }
 
     EndMode2D();
@@ -270,7 +279,7 @@ int main() {
     // Handle command mode
     handleCommandMode(command, &commandIndex, &inCommandMode,
                       windowState.height, windowState.width, tileTypes,
-                      edgeTypes, db);
+                      edgeTypes, db, &drawState);
 
     EndDrawing();
   }

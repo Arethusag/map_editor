@@ -1,5 +1,6 @@
 // draw.c
 
+#include "draw.h"
 #include "database.h"
 #include "edge.h"
 #include "grid.h"
@@ -76,53 +77,32 @@ void calculatePath(WorldCoords coords, int path[][2]) {
 }
 
 // Draw update functions
-void drawPreview(Map *currentMap, int drawnTiles[][3], int drawnTilesCount,
-                 Tile tileTypes[], Edge edgeTypes[], int activeTileKey) {
+void drawPreview(Map *currentMap, drawingState *drawState, Tile tileTypes[],
+                 Edge edgeTypes[], Wall wallTypes[], WindowState windowState,
+                 Camera2D camera) {
 
   // Make temp map from drawn tiles and current map
-  Map tempMap;
-  memset(tempMap.grid, 0, sizeof(tempMap.grid));
-  memcpy(tempMap.grid, currentMap->grid, sizeof(currentMap->grid));
+  Map tempMap = *currentMap;
 
-  // Draw tiles
-  for (int i = 0; i < drawnTilesCount; i++) {
-    int x = drawnTiles[i][0];
-    int y = drawnTiles[i][1];
-    int style = drawnTiles[i][2];
+  // Update temp map with drawn tiles
+  for (int i = 0; i < drawState->drawnTilesCount; i++) {
+    int x = drawState->drawnTiles[i][0];
+    int y = drawState->drawnTiles[i][1];
+    int style = drawState->drawnTiles[i][2];
 
     // Populate temp map
-    tempMap.grid[x][y][0] = activeTileKey;
-
-    // Draw the texture
-    Texture2D tileTexture = tileTypes[activeTileKey].tex[style];
-    Vector2 pos = {x * TILE_SIZE, y * TILE_SIZE};
-    DrawTexture(tileTexture, pos.x, pos.y, WHITE);
+    tempMap.grid[x][y][0] = drawState->activeTileKey;
   }
 
-  // Draw edges
-  int edgeGrid[GRID_SIZE * GRID_SIZE][2];
-  int edgeGridCount = 0;
-  calculateEdgeGrid(drawnTiles, drawnTilesCount, edgeGrid, &edgeGridCount);
+  // Get neighbors to placement
+  int visitedTiles[GRID_SIZE * GRID_SIZE][2];
+  int visitedCount = 0;
+  calculateEdgeGrid(drawState->drawnTiles, drawState->drawnTilesCount,
+                    visitedTiles, &visitedCount);
+  computeEdges(visitedTiles, visitedCount, &tempMap, tileTypes, edgeTypes);
 
-  for (int i = 0; i < edgeGridCount; i++) {
-    int x = edgeGrid[i][0];
-    int y = edgeGrid[i][1];
-    Vector2 pos = {x * TILE_SIZE, y * TILE_SIZE};
-
-    Texture2D resultTextures[12];
-    int textureCount = 0; // Keeps track of populated textures
-
-    // Compute edges for this tile
-    getEdgeTextures(&tempMap, x, y, tileTypes, edgeTypes, resultTextures,
-                    &textureCount);
-
-    // If a valid edge texture is found, store it
-    for (int j = 0; j < textureCount; j++) {
-      if (resultTextures[j].id != 0) {
-        DrawTexture(resultTextures[j], pos.x, pos.y, WHITE);
-      }
-    }
-  }
+  drawExistingMap(&tempMap, tileTypes, wallTypes, camera, windowState.width,
+                  windowState.height);
 }
 
 void applyTiles(Map *map, int placedTiles[][3], int placedCount,

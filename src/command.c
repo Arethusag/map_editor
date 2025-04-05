@@ -1,11 +1,13 @@
 // command.c
 #include "command.h"
+#include "draw.h"
 #include "edge.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db) {
+void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
+                  drawingState *drawState) {
   if (strncmp(command, ":tile ", 6) == 0) {
     char *tileKeyStr = command + 6;
     char *endptr;
@@ -13,8 +15,8 @@ void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db) {
     if (*endptr == '\0') {
       if (tileKey >= 0 && tileKey <= maxTileKey &&
           tileTypes[tileKey].tileKey == tileKey) {
-        activeTileKey = (int)tileKey;
-        printf("Active tile set to %d\n", activeTileKey);
+        drawState->activeTileKey = (int)tileKey;
+        printf("Active tile set to %d\n", drawState->activeTileKey);
       } else {
         printf("Tile key out of range\n");
       }
@@ -37,7 +39,8 @@ void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db) {
 
 void handleCommandMode(char *command, unsigned int *commandIndex,
                        bool *inCommandMode, int screenHeight, int screenWidth,
-                       Tile tileTypes[], Edge edgeTypes[], sqlite3 *db) {
+                       Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
+                       drawingState *drawState) {
 
   // Command mode entry
   if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
@@ -70,7 +73,7 @@ void handleCommandMode(char *command, unsigned int *commandIndex,
     // Handle command execution or exit
     if (IsKeyPressed(KEY_ENTER)) {
       printf("Command entered: %s\n", command);
-      parseCommand(tileTypes, edgeTypes, db);
+      parseCommand(tileTypes, edgeTypes, db, drawState);
       *inCommandMode = false;
     } else if (IsKeyPressed(KEY_ESCAPE)) {
       *inCommandMode = false;

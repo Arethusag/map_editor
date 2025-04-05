@@ -9,12 +9,12 @@
 #define CAMERA_SPEED 300.0f
 
 // structs
-typedef struct CameraState {
+typedef struct {
   bool isPanning;
   Vector2 lastMousePosition;
 } CameraState;
 
-typedef struct WindowState {
+typedef struct {
   int width;
   int height;
 } WindowState;
