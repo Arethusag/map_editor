@@ -35,7 +35,7 @@ void getEdgeTextures(Map *map, int x, int y, Tile tileTypes[], Edge edgeTypes[],
 void computeEdges(int edgeGrid[][2], int edgeGridCount, Map *map,
                   Tile tileTypes[], Edge edgeTypes[]);
 
-void computeMapEdges(Tile tileTypes[], Edge edgeTypes[]);
+void computeMapEdges(Tile tileTypes[], Edge edgeTypes[], Map *map);
 
 bool visitedCheck(int visitedTiles[][2], int visitedCount, int x, int y);
 

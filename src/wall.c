@@ -46,7 +46,7 @@ void computeWalls(int wallGrid[][2], int wallGridCount, Map *map,
   }
 }
 
-void computeMapWalls(Wall wallTypes[]) {
+void computeMapWalls(Wall wallTypes[], Map *map) {
   int wallGrid[GRID_SIZE * GRID_SIZE][2] = {0};
   int wallGridCount = 0;
 
@@ -58,5 +58,5 @@ void computeMapWalls(Wall wallTypes[]) {
     }
   }
 
-  computeWalls(wallGrid, wallGridCount, &currentMap, wallTypes);
+  computeWalls(wallGrid, wallGridCount, map, wallTypes);
 }

@@ -7,6 +7,6 @@
 #include <raylib.h>
 
 // functions
-void computeMapWalls(Wall wallTypes[]);
+void computeMapWalls(Wall wallTypes[], Map *map);
 
 #endif // WALL_H

@@ -106,7 +106,7 @@ void getEdgeTextures(Map *map, int x, int y, Tile tileTypes[], Edge edgeTypes[],
     if (edgeNumbers[i].tileKey != 0) {
 
       Texture2D edgeTexture =
-          getEdge(edgeTypes, countEdges, edgeNumbers[i].tileKey, i);
+          getEdge(edgeTypes, map->countEdges, edgeNumbers[i].tileKey, i);
       edgeTextureInfoArray[actualCount].texture = edgeTexture;
       edgeTextureInfoArray[actualCount].priority = edgeNumbers[i].priority;
       actualCount++;
@@ -155,7 +155,7 @@ void computeEdges(int edgeGrid[][2], int edgeGridCount, Map *map,
   }
 }
 
-void computeMapEdges(Tile tileTypes[], Edge edgeTypes[]) {
+void computeMapEdges(Tile tileTypes[], Edge edgeTypes[], Map *map) {
   // Compute edges
   int edgeGrid[GRID_SIZE * GRID_SIZE][2] = {0};
   int edgeGridCount = 0;
@@ -166,7 +166,7 @@ void computeMapEdges(Tile tileTypes[], Edge edgeTypes[]) {
       edgeGridCount++;
     }
   }
-  computeEdges(edgeGrid, edgeGridCount, &currentMap, tileTypes, edgeTypes);
+  computeEdges(edgeGrid, edgeGridCount, map, tileTypes, edgeTypes);
 }
 
 bool visitedCheck(int visitedTiles[][2], int visitedCount, int x, int y) {

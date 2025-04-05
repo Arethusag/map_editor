@@ -12,11 +12,13 @@ typedef struct {
   bool inCommandMode;
 } CommandState;
 
-void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
-                  drawingState *drawState, CommandState *commandState);
+void parseCommand(Tile tileTypes[], Edge edgeTypes[], Wall wallTypes[],
+                  sqlite3 *db, drawingState *drawState,
+                  CommandState *commandState, Map *map);
 
 void handleCommandMode(CommandState *commandState, int screenHeight,
                        int screenWidth, Tile tileTypes[], Edge edgeTypes[],
-                       sqlite3 *db, drawingState *drawState);
+                       Wall wallTypes[], sqlite3 *db, drawingState *drawState,
+                       Map *map);
 
 #endif // COMMAND_H

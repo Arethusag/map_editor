@@ -25,7 +25,11 @@ int executeScalarQuery(sqlite3 *db, const char *query) {
 }
 
 Texture2D loadTextureFromBlob(const unsigned char *blobData, int blobSize) {
+
+  // Initialize texture
   Texture2D texture = {0};
+
+  // Verify blob size
   if (blobSize != TILE_SIZE * TILE_SIZE * 4) {
     printf("Error: Invalid blob size %d (expected %d)\n", blobSize,
            TILE_SIZE * TILE_SIZE * 4);
@@ -66,22 +70,28 @@ Texture2D loadTextureFromBlob(const unsigned char *blobData, int blobSize) {
   return texture;
 }
 
-// Database functions
-Edge *loadEdges(sqlite3 *db) {
-
+sqlite3 *connectDatabase() {
+  sqlite3 *db;
   if (sqlite3_open("test.db", &db) != SQLITE_OK) {
     printf("Error opening database: %s\n", sqlite3_errmsg(db));
     return NULL;
   };
+  return db;
+}
+
+// Database functions
+Edge *loadEdges(sqlite3 *db, Map *map) {
 
   // Get number of tile types
   const char *countQuery =
       "SELECT COUNT(DISTINCT tile_key) FROM texture WHERE type = 'edge';";
 
-  countEdges = executeScalarQuery(db, countQuery);
+  int countEdges = executeScalarQuery(db, countQuery);
   if (countEdges == -1) {
     sqlite3_close(db);
     return NULL;
+  } else {
+    map->countEdges = countEdges;
   }
 
   // Allocate memory for Edge structs
@@ -130,17 +140,10 @@ Edge *loadEdges(sqlite3 *db) {
     printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
   }
   sqlite3_finalize(edgeStmt);
-  sqlite3_close(db);
   return edgeTypes;
 }
 
-Tile *loadTiles(sqlite3 *db) {
-
-  // Database Initialization
-  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
-    printf("Error opening database: %s\n", sqlite3_errmsg(db));
-    return NULL;
-  };
+Tile *loadTiles(sqlite3 *db, Map *map) {
 
   // Get number of tile types
   const char *countQuery = "SELECT COUNT(DISTINCT tile_key) FROM tile;";
@@ -150,10 +153,12 @@ Tile *loadTiles(sqlite3 *db) {
     sqlite3_close(db);
     return NULL;
   }
-  maxTileKey = executeScalarQuery(db, maxQuery);
+  int maxTileKey = executeScalarQuery(db, maxQuery);
   if (maxTileKey == -1) {
     sqlite3_close(db);
     return NULL;
+  } else {
+    map->maxTileKey = maxTileKey;
   }
 
   // Allocate memory for the tiles
@@ -213,17 +218,10 @@ Tile *loadTiles(sqlite3 *db) {
     printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
   }
   sqlite3_finalize(tileStmt);
-  sqlite3_close(db);
   return tileTypes;
 }
 
 Wall *loadWalls(sqlite3 *db) {
-
-  // Database Initialization
-  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
-    printf("Error opening database: %s\n", sqlite3_errmsg(db));
-    return NULL;
-  };
 
   // Initialize variables
   Wall *wallTypes;
@@ -304,18 +302,10 @@ Wall *loadWalls(sqlite3 *db) {
     printf("Error preparing tile query: %s\n", sqlite3_errmsg(db));
   }
   sqlite3_finalize(wallStmt);
-  sqlite3_close(db);
   return wallTypes;
 }
 
-void loadMap(sqlite3 *db, const char *table) {
-
-  // Database Initialization
-  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
-    printf("Error opening database: %s\n", sqlite3_errmsg(db));
-    return;
-  };
-
+void loadMap(sqlite3 *db, char *table, Map *map) {
   // Buffers to hold queries
   char mapQuery[256];
 
@@ -326,11 +316,11 @@ void loadMap(sqlite3 *db, const char *table) {
 
   // Create map grid
   if (sqlite3_prepare_v2(db, mapQuery, -1, &mapStmt, NULL) == SQLITE_OK) {
-    memset(currentMap.grid, 0, sizeof(currentMap.grid));
-    memset(currentMap.edges, 0, sizeof(currentMap.edges));
-    memset(currentMap.walls, 0, sizeof(currentMap.walls));
-    memset(currentMap.wallCount, 0, sizeof(currentMap.wallCount));
-    memset(currentMap.edgeCount, 0, sizeof(currentMap.edgeCount));
+    memset(map->grid, 0, sizeof(map->grid));
+    memset(map->edges, 0, sizeof(map->edges));
+    memset(map->walls, 0, sizeof(map->walls));
+    memset(map->wallCount, 0, sizeof(map->wallCount));
+    memset(map->edgeCount, 0, sizeof(map->edgeCount));
 
     while (sqlite3_step(mapStmt) == SQLITE_ROW) {
       int x = sqlite3_column_int(mapStmt, 0);
@@ -340,9 +330,9 @@ void loadMap(sqlite3 *db, const char *table) {
       int wallKey = sqlite3_column_int(mapStmt, 4);
 
       if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
-        currentMap.grid[x][y][0] = tileKey;   // Store tile_key
-        currentMap.grid[x][y][1] = tileStyle; // Store tile_style
-        currentMap.grid[x][y][2] = wallKey;   // Store wall_key
+        map->grid[x][y][0] = tileKey;   // Store tile_key
+        map->grid[x][y][1] = tileStyle; // Store tile_style
+        map->grid[x][y][2] = wallKey;   // Store wall_key
       } else {
         printf("Warning: Map coordinate (%d, %d) out of bounds.\n", x, y);
       }
@@ -351,18 +341,11 @@ void loadMap(sqlite3 *db, const char *table) {
     printf("Error preparing SQL query: %s\n", sqlite3_errmsg(db));
   }
   sqlite3_finalize(mapStmt);
-  sqlite3_close(db);
-  currentMap.name = (const char *)table;
-  printf("Map table \"%s\" successfully loaded\n", currentMap.name);
+  map->name = (const char *)table;
+  printf("Map table \"%s\" successfully loaded\n", map->name);
 }
 
-void saveMap(sqlite3 *db, char *table) {
-
-  // Database Initialization
-  if (sqlite3_open("test.db", &db) != SQLITE_OK) {
-    printf("Error opening database: %s\n", sqlite3_errmsg(db));
-    return;
-  };
+void saveMap(sqlite3 *db, char *table, Map *map) {
 
   // Buffer to hold query
   char dropQuery[256];
@@ -412,10 +395,10 @@ void saveMap(sqlite3 *db, char *table) {
     for (int x = 0; x < GRID_SIZE; x++) {
       for (int y = 0; y < GRID_SIZE; y++) {
         // Save non-empty cells (tileKey != 0 or potentially wallKey != 0)
-        if (currentMap.grid[x][y][0] != 0 || currentMap.grid[x][y][2] != 0) {
-          int tileKey = currentMap.grid[x][y][0];
-          int tileStyle = currentMap.grid[x][y][1];
-          int wallKey = currentMap.grid[x][y][2];
+        if (map->grid[x][y][0] != 0 || map->grid[x][y][2] != 0) {
+          int tileKey = map->grid[x][y][0];
+          int tileStyle = map->grid[x][y][1];
+          int wallKey = map->grid[x][y][2];
           sqlite3_bind_int(insertStmt, 1, x);         // Bind x
           sqlite3_bind_int(insertStmt, 2, y);         // Bind y
           sqlite3_bind_int(insertStmt, 3, tileKey);   // Bind tile_key
@@ -441,5 +424,4 @@ void saveMap(sqlite3 *db, char *table) {
     return;
   }
   sqlite3_finalize(insertStmt); // Finalize insert statement if it was prepared
-  sqlite3_close(db);
 }

@@ -1,6 +1,4 @@
 // main.c
-
-// project headers
 #include "command.h"
 #include "database.h"
 #include "draw.h"
@@ -9,29 +7,24 @@
 #include "undo.h"
 #include "wall.h"
 #include "window.h"
-
-// system headers
 #include <raylib.h>
 #include <sqlite3.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-// Variables
-char command[256] = {0};
-unsigned int commandIndex = 0;
-bool inCommandMode = false;
-int countEdges;
-int maxTileKey;
+// Initialize map
 Map currentMap = {0};
-sqlite3 *db;
-Camera2D camera = {0};
 
 // Entry point
 int main() {
 
-  loadMap(db, "map");
+  // Initialize database
+  sqlite3 *db = connectDatabase();
+  // Initialize camera
+  Camera2D camera = {0};
+
+  loadMap(db, "map", &currentMap);
 
   // Set window dimensions
   int windowWidth = 800;
@@ -43,11 +36,11 @@ int main() {
   SetExitKey(KEY_NULL);
 
   // Load textures
-  Tile *tileTypes = loadTiles(db);
-  Edge *edgeTypes = loadEdges(db);
+  Tile *tileTypes = loadTiles(db, &currentMap);
+  Edge *edgeTypes = loadEdges(db, &currentMap);
   Wall *wallTypes = loadWalls(db);
-  computeMapEdges(tileTypes, edgeTypes);
-  computeMapWalls(wallTypes);
+  computeMapEdges(tileTypes, edgeTypes, &currentMap);
+  computeMapWalls(wallTypes, &currentMap);
 
   // Initialize Undo/Redo manager
   UndoRedoManager *manager = (UndoRedoManager *)malloc(sizeof(UndoRedoManager));
@@ -283,7 +276,8 @@ int main() {
 
     // Handle command mode
     handleCommandMode(&commandState, windowState.height, windowState.width,
-                      tileTypes, edgeTypes, db, &drawState);
+                      tileTypes, edgeTypes, wallTypes, db, &drawState,
+                      &currentMap);
 
     EndDrawing();
   }
@@ -299,6 +293,7 @@ int main() {
   free(manager);
   free(tileTypes);
   free(edgeTypes);
+  // sqlite3_close(db);
   CloseWindow();
   return 0;
 }

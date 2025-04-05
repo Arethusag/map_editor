@@ -2,19 +2,21 @@
 #include "command.h"
 #include "draw.h"
 #include "edge.h"
+#include "wall.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
-                  drawingState *drawState, CommandState *commandState) {
+void parseCommand(Tile tileTypes[], Edge edgeTypes[], Wall wallTypes[],
+                  sqlite3 *db, drawingState *drawState,
+                  CommandState *commandState, Map *map) {
 
   if (strncmp(commandState->commandBuffer, ":tile ", 6) == 0) {
     char *tileKeyStr = commandState->commandBuffer + 6;
     char *endptr;
     long tileKey = strtol(tileKeyStr, &endptr, 10);
     if (*endptr == '\0') {
-      if (tileKey >= 0 && tileKey <= maxTileKey &&
+      if (tileKey >= 0 && tileKey <= map->maxTileKey &&
           tileTypes[tileKey].tileKey == tileKey) {
         drawState->activeTileKey = (int)tileKey;
         printf("Active tile set to %d\n", drawState->activeTileKey);
@@ -26,12 +28,13 @@ void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
     }
   } else if (strncmp(commandState->commandBuffer, ":load ", 6) == 0) {
     char *table = &commandState->commandBuffer[6];
-    loadMap(db, table);
-    computeMapEdges(tileTypes, edgeTypes);
+    loadMap(db, table, map);
+    computeMapEdges(tileTypes, edgeTypes, map);
+    computeMapWalls(wallTypes, map);
     printf("Map loaded: %s\n", table);
   } else if (strncmp(commandState->commandBuffer, ":save ", 6) == 0) {
     char *table = &commandState->commandBuffer[6];
-    saveMap(db, table);
+    saveMap(db, table, map);
     printf("Map saved: %s\n", table);
   } else {
     printf("Command not recognized\n");
@@ -40,7 +43,8 @@ void parseCommand(Tile tileTypes[], Edge edgeTypes[], sqlite3 *db,
 
 void handleCommandMode(CommandState *commandState, int screenHeight,
                        int screenWidth, Tile tileTypes[], Edge edgeTypes[],
-                       sqlite3 *db, drawingState *drawState) {
+                       Wall wallTypes[], sqlite3 *db, drawingState *drawState,
+                       Map *map) {
 
   // Command mode entry
   if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
@@ -73,7 +77,8 @@ void handleCommandMode(CommandState *commandState, int screenHeight,
     // Handle command execution or exit
     if (IsKeyPressed(KEY_ENTER)) {
       printf("Command entered: %s\n", commandState->commandBuffer);
-      parseCommand(tileTypes, edgeTypes, db, drawState, commandState);
+      parseCommand(tileTypes, edgeTypes, wallTypes, db, drawState, commandState,
+                   map);
       commandState->inCommandMode = false;
     } else if (IsKeyPressed(KEY_ESCAPE)) {
       commandState->inCommandMode = false;
