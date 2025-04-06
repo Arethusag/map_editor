@@ -8,10 +8,14 @@
 #include <string.h>
 
 void parseCommand(Tile tileTypes[], Edge edgeTypes[], Wall wallTypes[],
-                  sqlite3 *db, drawingState *drawState,
+                  sqlite3 *db, DrawingState *drawState,
                   CommandState *commandState, Map *map) {
 
   if (strncmp(commandState->commandBuffer, ":tile ", 6) == 0) {
+    if (drawState->drawType != DRAW_TILE) {
+      drawState->drawType = DRAW_TILE;
+      puts("Updated draw type to tile");
+    }
     char *tileKeyStr = commandState->commandBuffer + 6;
     char *endptr;
     long tileKey = strtol(tileKeyStr, &endptr, 10);
@@ -25,6 +29,25 @@ void parseCommand(Tile tileTypes[], Edge edgeTypes[], Wall wallTypes[],
       }
     } else {
       printf("Invalid tile key\n");
+    }
+  } else if (strncmp(commandState->commandBuffer, ":wall ", 6) == 0) {
+    if (drawState->drawType != DRAW_WALL) {
+      drawState->drawType = DRAW_WALL;
+      puts("Updated draw type to wall");
+    }
+    char *wallKeyStr = commandState->commandBuffer + 6;
+    char *endptr;
+    long wallKey = strtol(wallKeyStr, &endptr, 10);
+    if (*endptr == '\0') {
+      if (wallKey >= 0 && wallKey <= map->maxWallKey &&
+          wallTypes[wallKey].wallKey == wallKey) {
+        drawState->activeWallKey = (int)wallKey;
+        printf("Active wall set to %d\n", drawState->activeWallKey);
+      } else {
+        printf("Wall key out of range\n");
+      }
+    } else {
+      printf("Invalid wall key\n");
     }
   } else if (strncmp(commandState->commandBuffer, ":load ", 6) == 0) {
     char *table = &commandState->commandBuffer[6];
@@ -43,7 +66,7 @@ void parseCommand(Tile tileTypes[], Edge edgeTypes[], Wall wallTypes[],
 
 void handleCommandMode(CommandState *commandState, int screenHeight,
                        int screenWidth, Tile tileTypes[], Edge edgeTypes[],
-                       Wall wallTypes[], sqlite3 *db, drawingState *drawState,
+                       Wall wallTypes[], sqlite3 *db, DrawingState *drawState,
                        Map *map) {
 
   // Command mode entry

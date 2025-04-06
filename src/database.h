@@ -35,6 +35,7 @@ typedef struct Map {
   int edgeCount[GRID_SIZE][GRID_SIZE];
   int wallCount[GRID_SIZE][GRID_SIZE];
   int maxTileKey;
+  int maxWallKey;
   int countEdges;
 } Map;
 
@@ -53,17 +54,17 @@ typedef struct Wall {
   const char *orientation;
 } Wall;
 
-// globals
-extern int countEdges;
-extern Map currentMap;
-
 // Function prototypes
 sqlite3 *connectDatabase(void);
-Texture2D loadTextureFromBlob(const unsigned char *blobData, int blobSize);
+
 Edge *loadEdges(sqlite3 *db, Map *map);
+
 Tile *loadTiles(sqlite3 *db, Map *map);
+
 Wall *loadWalls(sqlite3 *db);
+
 void loadMap(sqlite3 *db, char *table, Map *map);
+
 void saveMap(sqlite3 *db, char *table, Map *map);
 
 #endif // DATABASE_H

@@ -176,81 +176,122 @@ int main() {
 
     if (drawState.isDrawing) {
       // Box (Shift) mode drawing
-      if (drawState.mode == MODE_BOX) {
-        WorldCoords coords =
-            getWorldGridCoords(drawState.startPos, drawState.mousePos, camera);
+      switch (drawState.mode) {
+      case MODE_BOX: {
+        switch (drawState.drawType) {
+        case DRAW_TILE: {
 
-        // Calculate the size of the array based on the bounding box
-        int coordArraySize = getBoundingBoxSize(coords);
-        int coordArray[coordArraySize][2];
+          WorldCoords coords = getWorldGridCoords(drawState.startPos,
+                                                  drawState.mousePos, camera);
 
-        coordsToArray(coords, coordArray);
+          // Calculate the size of the array based on the bounding box
+          int coordArraySize = getBoundingBoxSize(coords);
+          int coordArray[coordArraySize][2];
 
-        Array2DPtr coordData = {.arrayLength = coordArraySize,
-                                .array = coordArray};
+          coordsToArray(coords, coordArray);
 
-        updateDrawnTiles(coordData, &drawState, tileTypes);
+          Array2DPtr coordData = {.arrayLength = coordArraySize,
+                                  .array = coordArray};
 
-        drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
-                    windowState, camera);
+          updateDrawnTiles(coordData, &drawState, tileTypes);
 
-        // Pathing (Ctrl) mode drawing
-      } else if (drawState.mode == MODE_PATHING) {
-        WorldCoords coords =
-            getWorldGridCoords(drawState.startPos, drawState.mousePos, camera);
+          drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                      windowState, camera);
+          break;
+        }
+        case DRAW_WALL: {
+          break;
+        }
+        }
+        break;
+      }
+      case MODE_PATHING: {
+        switch (drawState.drawType) {
+        case DRAW_TILE: {
 
-        int coordArraySize = (abs(coords.endX - coords.startX) +
-                              (abs(coords.endY - coords.startY)) + 1);
+          WorldCoords coords = getWorldGridCoords(drawState.startPos,
+                                                  drawState.mousePos, camera);
 
-        int coordArray[coordArraySize][2];
+          int coordArraySize = (abs(coords.endX - coords.startX) +
+                                (abs(coords.endY - coords.startY)) + 1);
 
-        Array2DPtr pathData = {.arrayLength = coordArraySize,
-                               .array = coordArray};
+          int coordArray[coordArraySize][2];
 
-        calculatePath(coords, pathData);
+          Array2DPtr pathData = {.arrayLength = coordArraySize,
+                                 .array = coordArray};
 
-        updateDrawnTiles(pathData, &drawState, tileTypes);
+          calculatePath(coords, pathData);
 
-        drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
-                    windowState, camera);
+          updateDrawnTiles(pathData, &drawState, tileTypes);
 
-        // Painter mode drawing
-      } else if (drawState.mode == MODE_PAINTER) {
+          drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                      windowState, camera);
 
-        WorldCoords coords =
-            getWorldGridCoords(drawState.mousePos, drawState.mousePos, camera);
-        int x = coords.endX;
-        int y = coords.endY;
+          break;
+        }
+        case DRAW_WALL: {
+          break;
+        }
+        }
+      }
+      case MODE_PAINTER: {
+        switch (drawState.drawType) {
+        case DRAW_TILE: {
+          WorldCoords coords = getWorldGridCoords(drawState.mousePos,
+                                                  drawState.mousePos, camera);
+          int x = coords.endX;
+          int y = coords.endY;
 
-        int alreadyVisited = 0;
-        for (int j = 0; j < drawState.drawnTilesCount; j++) {
-          if (drawState.drawnTiles[j][0] == x &&
-              drawState.drawnTiles[j][1] == y) {
-            alreadyVisited = 1;
-            break;
+          int alreadyVisited = 0;
+          for (int j = 0; j < drawState.drawnTilesCount; j++) {
+            if (drawState.drawnTiles[j][0] == x &&
+                drawState.drawnTiles[j][1] == y) {
+              alreadyVisited = 1;
+              break;
+            }
           }
-        }
 
-        if (!alreadyVisited) {
-          int style = getRandTileStyle(drawState.activeTileKey, tileTypes);
-          drawState.drawnTiles[drawState.drawnTilesCount][0] = x;
-          drawState.drawnTiles[drawState.drawnTilesCount][1] = y;
-          drawState.drawnTiles[drawState.drawnTilesCount][2] = style;
-          drawState.drawnTilesCount++;
-        }
+          if (!alreadyVisited) {
+            int style = getRandTileStyle(drawState.activeTileKey, tileTypes);
+            drawState.drawnTiles[drawState.drawnTilesCount][0] = x;
+            drawState.drawnTiles[drawState.drawnTilesCount][1] = y;
+            drawState.drawnTiles[drawState.drawnTilesCount][2] = style;
+            drawState.drawnTilesCount++;
+          }
 
-        drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
-                    windowState, camera);
+          drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                      windowState, camera);
+          break;
+        }
+        case DRAW_WALL: {
+          break;
+        }
+        }
+      }
       }
     } else {
 
       // Fallback: Draw a simple cursor preview if no drawing mode is active
       WorldCoords coords =
           getWorldGridCoords(drawState.mousePos, drawState.mousePos, camera);
-      Texture2D tileTexture = tileTypes[drawState.activeTileKey].tex[0];
-      Vector2 tilePos = {coords.startX * TILE_SIZE, coords.startY * TILE_SIZE};
-      DrawTexture(tileTexture, tilePos.x, tilePos.y, WHITE);
-      DrawRectangleLines(tilePos.x, tilePos.y, TILE_SIZE, TILE_SIZE, RED);
+
+      Texture2D previewTex = {0};
+      Vector2 previewPos = {coords.startX * TILE_SIZE,
+                            coords.startY * TILE_SIZE};
+      switch (drawState.drawType) {
+      case DRAW_TILE:
+        previewTex = tileTypes[drawState.activeTileKey].tex[0];
+        DrawTexture(previewTex, previewPos.x, previewPos.y, WHITE);
+        DrawRectangleLines(previewPos.x, previewPos.y, TILE_SIZE, TILE_SIZE,
+                           RED);
+        break;
+      case DRAW_WALL:
+        previewTex = wallTypes[drawState.activeWallKey].wallTex[3].tex;
+        DrawTexture(previewTex, previewPos.x, previewPos.y, WHITE);
+        DrawRectangleLines(previewPos.x - TILE_SIZE, previewPos.y - TILE_SIZE,
+                           TILE_SIZE * 2, TILE_SIZE * 2, RED);
+        break;
+      };
     }
 
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
