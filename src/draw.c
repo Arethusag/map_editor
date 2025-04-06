@@ -6,9 +6,7 @@
 #include "grid.h"
 #include <raylib.h>
 #include <sqlite3.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 int abs(int x) { return x < 0 ? -x : x; }
 
@@ -92,6 +90,7 @@ void drawPreview(Map *currentMap, drawingState *drawState, Tile tileTypes[],
 
     // Populate temp map
     tempMap.grid[x][y][0] = drawState->activeTileKey;
+    tempMap.grid[x][y][1] = style;
   }
 
   // Get neighbors to placement
