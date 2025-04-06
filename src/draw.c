@@ -96,8 +96,7 @@ void drawPreview(Map *currentMap, DrawingState *drawState, Tile tileTypes[],
   // Get neighbors to placement
   int visitedTiles[GRID_SIZE * GRID_SIZE][2];
   int visitedCount = 0;
-  calculateEdgeGrid(drawState->drawnTiles, drawState->drawnTilesCount,
-                    visitedTiles, &visitedCount);
+  calculateEdgeGrid(drawState, visitedTiles, &visitedCount);
   computeEdges(visitedTiles, visitedCount, &tempMap, tileTypes, edgeTypes);
 
   drawExistingMap(&tempMap, tileTypes, wallTypes, camera, windowState.width,

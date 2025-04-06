@@ -1,5 +1,6 @@
 #include "undo.h"
 #include "database.h"
+#include "draw.h"
 #include "edge.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,19 +8,19 @@
 
 // Undo/Redo functions
 void createTileChangeBatch(UndoRedoManager *manager, Map *map,
-                           int drawnTiles[][3], int drawnTilesCount,
-                           int activeTileKey, int visitedTiles[][2],
+                           DrawingState *drawState, int visitedTiles[][2],
                            int visitedCount) {
-  printf("Creating tile change batch with %d tiles.\n", drawnTilesCount);
+  printf("Creating tile change batch with %d tiles.\n",
+         drawState->drawnTilesCount);
 
   TileChange *changes =
-      (TileChange *)malloc(drawnTilesCount * sizeof(TileChange));
+      (TileChange *)malloc(drawState->drawnTilesCount * sizeof(TileChange));
 
-  for (int i = 0; i < drawnTilesCount; i++) {
-    int x = drawnTiles[i][0];
-    int y = drawnTiles[i][1];
-    int newStyle = drawnTiles[i][2];
-    int newKey = activeTileKey;
+  for (int i = 0; i < drawState->drawnTilesCount; i++) {
+    int x = drawState->drawnTiles[i][0];
+    int y = drawState->drawnTiles[i][1];
+    int newStyle = drawState->drawnTiles[i][2];
+    int newKey = drawState->activeTileKey;
 
     // Get old tile information from the map
     int oldKey = map->grid[x][y][0];
@@ -41,7 +42,7 @@ void createTileChangeBatch(UndoRedoManager *manager, Map *map,
   TileChangeBatch *batch = (TileChangeBatch *)malloc(sizeof(TileChangeBatch));
 
   batch->changes = changes; // Point to the changes array
-  batch->changeCount = drawnTilesCount;
+  batch->changeCount = drawState->drawnTilesCount;
   batch->visitedTiles = (int (*)[2])malloc(visitedCount * sizeof(int[2]));
   memcpy(batch->visitedTiles, visitedTiles, visitedCount * sizeof(int[2]));
   batch->visitedCount = visitedCount;
@@ -50,7 +51,8 @@ void createTileChangeBatch(UndoRedoManager *manager, Map *map,
 
   printf("Stored %d visited tiles.\n", visitedCount);
 
-  printf("TileChangeBatch created. changeCount=%d\n", drawnTilesCount);
+  printf("TileChangeBatch created. changeCount=%d\n",
+         drawState->drawnTilesCount);
 
   // If we're in the middle of the stack, truncate the "dead branches"
   if (manager->current && manager->current->next) {

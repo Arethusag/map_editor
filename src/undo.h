@@ -4,6 +4,7 @@
 
 // includes
 #include "database.h"
+#include "draw.h"
 #include "edge.h"
 
 // structs
@@ -29,10 +30,11 @@ typedef struct UndoRedoManager {
 
 // functions
 void createTileChangeBatch(UndoRedoManager *manager, Map *map,
-                           int drawnTiles[][3], int drawnTilesCount,
-                           int activeTileKey, int visitedTiles[][2],
+                           DrawingState *drawState, int visitedTiles[][2],
                            int visitedCount);
+
 void undo(UndoRedoManager *manager, Map *map, Tile *tileTypes, Edge *edgeTypes);
+
 void redo(UndoRedoManager *manager, Map *map, Tile *tileTypes, Edge *edgeTypes);
 
 #endif // UNDO_H

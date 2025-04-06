@@ -4,15 +4,16 @@
 
 // includes
 #include "database.h"
+#include "draw.h"
 #include <raylib.h>
 
 // structs
-typedef struct NeighborInfo {
+typedef struct {
   int tileKey;
   int priority;
 } NeighborInfo;
 
-typedef struct EdgeTextureInfo {
+typedef struct {
   Texture2D texture;
   int priority;
 } EdgeTextureInfo;
@@ -39,7 +40,7 @@ void computeMapEdges(Tile tileTypes[], Edge edgeTypes[], Map *map);
 
 bool visitedCheck(int visitedTiles[][2], int visitedCount, int x, int y);
 
-void calculateEdgeGrid(int placedTiles[][3], int placedCount,
-                       int visitedTiles[][2], int *visitedCount);
+void calculateEdgeGrid(DrawingState *drawState, int visitedTiles[][2],
+                       int *visitedCount);
 
 #endif // EDGE_H

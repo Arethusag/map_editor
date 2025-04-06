@@ -1,5 +1,6 @@
 #include "edge.h"
 #include "database.h"
+#include "draw.h"
 #include <stdbool.h>
 #include <stdlib.h>
 
@@ -185,12 +186,12 @@ bool visitedCheck(int visitedTiles[][2], int visitedCount, int x, int y) {
   }
 }
 
-void calculateEdgeGrid(int placedTiles[][3], int placedCount,
-                       int visitedTiles[][2], int *visitedCount) {
+void calculateEdgeGrid(DrawingState *drawState, int visitedTiles[][2],
+                       int *visitedCount) {
 
-  for (int i = 0; i < placedCount; i++) {
-    int x = placedTiles[i][0];
-    int y = placedTiles[i][1];
+  for (int i = 0; i < drawState->drawnTilesCount; i++) {
+    int x = drawState->drawnTiles[i][0];
+    int y = drawState->drawnTiles[i][1];
 
     int directions[8][2] = {
         {x, y - 1},     {x + 1, y},

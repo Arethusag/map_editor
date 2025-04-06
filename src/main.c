@@ -183,6 +183,7 @@ int main() {
         // Calculate the size of the array based on the bounding box
         int coordArraySize = getBoundingBoxSize(coords);
         int coordArray[coordArraySize][2];
+
         coordsToArray(coords, coordArray);
 
         Array2DPtr coordData = {.arrayLength = coordArraySize,
@@ -257,13 +258,12 @@ int main() {
       // Get neighbors to placement
       int visitedTiles[GRID_SIZE * GRID_SIZE][2];
       int visitedCount = 0;
-      calculateEdgeGrid(drawState.drawnTiles, drawState.drawnTilesCount,
-                        visitedTiles, &visitedCount);
+
+      calculateEdgeGrid(&drawState, visitedTiles, &visitedCount);
 
       // Add drawn tiles to undo/redo stack
-      createTileChangeBatch(manager, &currentMap, drawState.drawnTiles,
-                            drawState.drawnTilesCount, drawState.activeTileKey,
-                            visitedTiles, visitedCount);
+      createTileChangeBatch(manager, &currentMap, &drawState, visitedTiles,
+                            visitedCount);
 
       // Texture updates
       applyTiles(&currentMap, drawState.drawnTiles, drawState.drawnTilesCount,
