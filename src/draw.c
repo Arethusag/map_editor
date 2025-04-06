@@ -20,21 +20,21 @@ int getRandTileStyle(int tileKey, Tile *tileTypes) {
   }
 }
 
-void calculatePath(WorldCoords coords, int path[][2]) {
+void calculatePath(WorldCoords coords, Array2DPtr pathData) {
   int dx = coords.endX - coords.startX;
   int dy = coords.endY - coords.startY;
   int steps = abs(dx) + abs(dy) + 1;
   int count = 0;
-  path[count][0] = coords.startX;
-  path[count][1] = coords.startY;
+  pathData.array[count][0] = coords.startX;
+  pathData.array[count][1] = coords.startY;
   count++;
 
   if (abs(dx) == abs(dy)) {
     int stepX = (dx > 0) ? 1 : (dx < 0) ? -1 : 0;
     int stepY = (dy > 0) ? 1 : (dy < 0) ? -1 : 0;
     for (int i = 0; i <= steps; i++) {
-      path[i][0] = coords.startX + i / 2 * stepX;
-      path[i][1] = coords.startY + i / 2 * stepY;
+      pathData.array[i][0] = coords.startX + i / 2 * stepX;
+      pathData.array[i][1] = coords.startY + i / 2 * stepY;
     }
   } else if (abs(dx) > abs(dy)) {
     int bendX = (dx != 0) ? coords.endX : coords.startX;
@@ -42,15 +42,15 @@ void calculatePath(WorldCoords coords, int path[][2]) {
 
     // Draw X path
     for (int i = 1; i <= abs(dx); i++) {
-      path[count][0] = coords.startX + (dx > 0 ? i : -i);
-      path[count][1] = coords.startY;
+      pathData.array[count][0] = coords.startX + (dx > 0 ? i : -i);
+      pathData.array[count][1] = coords.startY;
       count++;
     }
 
     // Draw Y path
     for (int i = 1; i <= abs(dy); i++) {
-      path[count][0] = bendX;
-      path[count][1] = bendY + (dy > 0 ? i : -i);
+      pathData.array[count][0] = bendX;
+      pathData.array[count][1] = bendY + (dy > 0 ? i : -i);
       count++;
     }
   } else if (abs(dy) > abs(dx)) {
@@ -60,22 +60,22 @@ void calculatePath(WorldCoords coords, int path[][2]) {
 
     // Draw X path
     for (int i = 1; i <= abs(dx); i++) {
-      path[count][0] = coords.startX + (dx > 0 ? i : -i);
-      path[count][1] = coords.endY;
+      pathData.array[count][0] = coords.startX + (dx > 0 ? i : -i);
+      pathData.array[count][1] = coords.endY;
       count++;
     }
 
     // Draw Y path
     for (int i = 1; i <= abs(dy); i++) {
-      path[count][0] = bendX;
-      path[count][1] = bendY + (dy > 0 ? i : -i);
+      pathData.array[count][0] = bendX;
+      pathData.array[count][1] = bendY + (dy > 0 ? i : -i);
       count++;
     }
   }
 }
 
 // Draw update functions
-void drawPreview(Map *currentMap, drawingState *drawState, Tile tileTypes[],
+void drawPreview(Map *currentMap, DrawingState *drawState, Tile tileTypes[],
                  Edge edgeTypes[], Wall wallTypes[], WindowState windowState,
                  Camera2D camera) {
 
@@ -156,42 +156,42 @@ void drawExistingMap(Map *map, Tile tileTypes[], Wall wallTypes[],
   }
 }
 
-void updateDrawnTiles(int coordArray[][2], int coordArraySize,
-                      int drawnTiles[][3], int *drawnTilesCount,
-                      int activeTileKey, Tile *tileTypes) {
+void updateDrawnTiles(Array2DPtr coordData, DrawingState *drawState,
+                      Tile *tileTypes) {
 
   // Update drawn with all new tiles in array
-  for (int i = 0; i < coordArraySize; i++) {
-    int x = coordArray[i][0];
-    int y = coordArray[i][1];
+  for (int i = 0; i < coordData.arrayLength; i++) {
+    int x = coordData.array[i][0];
+    int y = coordData.array[i][1];
 
     int alreadyVisited = 0;
-    for (int j = 0; j < *drawnTilesCount; j++) {
-      if (drawnTiles[j][0] == x && drawnTiles[j][1] == y) {
+    for (int j = 0; j < drawState->drawnTilesCount; j++) {
+      if (drawState->drawnTiles[j][0] == x &&
+          drawState->drawnTiles[j][1] == y) {
         alreadyVisited = 1;
         break;
       }
     }
 
     if (!alreadyVisited) {
-      int style = getRandTileStyle(activeTileKey, tileTypes);
-      drawnTiles[*drawnTilesCount][0] = x;
-      drawnTiles[*drawnTilesCount][1] = y;
-      drawnTiles[*drawnTilesCount][2] = style;
-      (*drawnTilesCount)++;
+      int style = getRandTileStyle(drawState->activeTileKey, tileTypes);
+      drawState->drawnTiles[drawState->drawnTilesCount][0] = x;
+      drawState->drawnTiles[drawState->drawnTilesCount][1] = y;
+      drawState->drawnTiles[drawState->drawnTilesCount][2] = style;
+      (drawState->drawnTilesCount)++;
     }
   }
 
   // Remove old tiles from drawn if no longer in array
   int newCount = 0;
-  for (int i = 0; i < *drawnTilesCount; i++) {
-    int x = drawnTiles[i][0];
-    int y = drawnTiles[i][1];
-    int style = drawnTiles[i][2];
+  for (int i = 0; i < drawState->drawnTilesCount; i++) {
+    int x = drawState->drawnTiles[i][0];
+    int y = drawState->drawnTiles[i][1];
+    int style = drawState->drawnTiles[i][2];
     int stillInArray = 0;
 
-    for (int j = 0; j < coordArraySize; j++) {
-      if (x == coordArray[j][0] && y == coordArray[j][1]) {
+    for (int j = 0; j < coordData.arrayLength; j++) {
+      if (x == coordData.array[j][0] && y == coordData.array[j][1]) {
         stillInArray = 1;
         break;
       }
@@ -199,13 +199,13 @@ void updateDrawnTiles(int coordArray[][2], int coordArraySize,
 
     if (stillInArray) {
       // Keep the tile in drawnTiles
-      drawnTiles[newCount][0] = x;
-      drawnTiles[newCount][1] = y;
-      drawnTiles[newCount][2] = style;
+      drawState->drawnTiles[newCount][0] = x;
+      drawState->drawnTiles[newCount][1] = y;
+      drawState->drawnTiles[newCount][2] = style;
       newCount++;
     }
   }
 
   // Update the drawnTilesCount to reflect the new size
-  *drawnTilesCount = newCount;
+  drawState->drawnTilesCount = newCount;
 }

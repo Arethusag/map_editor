@@ -13,17 +13,14 @@
 #include <string.h>
 #include <time.h>
 
-// Initialize map
-Map currentMap = {0};
-
 // Entry point
 int main() {
 
   // Initialize database
   sqlite3 *db = connectDatabase();
-  // Initialize camera
-  Camera2D camera = {0};
 
+  // Initialize map
+  Map currentMap = {0};
   loadMap(db, "map", &currentMap);
 
   // Set window dimensions
@@ -54,6 +51,7 @@ int main() {
   windowState.height = windowHeight;
 
   // Initialize camera
+  Camera2D camera = {0};
   camera.zoom = 1.0f;
   camera.offset =
       (Vector2){windowState.width / 2.0f, windowState.height / 2.0f};
@@ -67,7 +65,7 @@ int main() {
   cameraState.lastMousePosition = (Vector2){0, 0};
 
   // Initialize drawing state
-  drawingState drawState = {0};
+  DrawingState drawState = {0};
   drawState.drawType = DRAW_TILE; // Start in tile drawing mode
   drawState.mode = MODE_PAINTER;  // Default mode is painter
   drawState.activeTileKey = 0;    // Initialize to a default tile
@@ -187,9 +185,11 @@ int main() {
         int coordArray[coordArraySize][2];
         coordsToArray(coords, coordArray);
 
-        updateDrawnTiles(coordArray, coordArraySize, drawState.drawnTiles,
-                         &drawState.drawnTilesCount, drawState.activeTileKey,
-                         tileTypes);
+        Array2DPtr coordData = {.arrayLength = coordArraySize,
+                                .array = coordArray};
+
+        updateDrawnTiles(coordData, &drawState, tileTypes);
+
         drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
                     windowState, camera);
 
@@ -200,12 +200,16 @@ int main() {
 
         int coordArraySize = (abs(coords.endX - coords.startX) +
                               (abs(coords.endY - coords.startY)) + 1);
+
         int coordArray[coordArraySize][2];
 
-        calculatePath(coords, coordArray);
-        updateDrawnTiles(coordArray, coordArraySize, drawState.drawnTiles,
-                         &drawState.drawnTilesCount, drawState.activeTileKey,
-                         tileTypes);
+        Array2DPtr pathData = {.arrayLength = coordArraySize,
+                               .array = coordArray};
+
+        calculatePath(coords, pathData);
+
+        updateDrawnTiles(pathData, &drawState, tileTypes);
+
         drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
                     windowState, camera);
 
