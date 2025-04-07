@@ -35,7 +35,7 @@ int main() {
   // Load textures
   Tile *tileTypes = loadTiles(db, &currentMap);
   Edge *edgeTypes = loadEdges(db, &currentMap);
-  Wall *wallTypes = loadWalls(db);
+  Wall *wallTypes = loadWalls(db, &currentMap);
   computeMapEdges(tileTypes, edgeTypes, &currentMap);
   computeMapWalls(wallTypes, &currentMap);
 
@@ -264,6 +264,7 @@ int main() {
           break;
         }
         case DRAW_WALL: {
+
           break;
         }
         }
@@ -275,22 +276,36 @@ int main() {
       WorldCoords coords =
           getWorldGridCoords(drawState.mousePos, drawState.mousePos, camera);
 
-      Texture2D previewTex = {0};
-      Vector2 previewPos = {coords.startX * TILE_SIZE,
-                            coords.startY * TILE_SIZE};
       switch (drawState.drawType) {
-      case DRAW_TILE:
-        previewTex = tileTypes[drawState.activeTileKey].tex[0];
+      case DRAW_TILE: {
+        Vector2 previewPos = {coords.startX * TILE_SIZE,
+                              coords.startY * TILE_SIZE};
+        Texture2D previewTex = tileTypes[drawState.activeTileKey].tex[0];
         DrawTexture(previewTex, previewPos.x, previewPos.y, WHITE);
         DrawRectangleLines(previewPos.x, previewPos.y, TILE_SIZE, TILE_SIZE,
                            RED);
         break;
-      case DRAW_WALL:
-        previewTex = wallTypes[drawState.activeWallKey].wallTex[3].tex;
-        DrawTexture(previewTex, previewPos.x, previewPos.y, WHITE);
-        DrawRectangleLines(previewPos.x - TILE_SIZE, previewPos.y - TILE_SIZE,
-                           TILE_SIZE * 2, TILE_SIZE * 2, RED);
+      }
+      case DRAW_WALL: {
+        Texture2D previewTex[4] = {
+            wallTypes[drawState.activeWallKey].wallTex[0].tex,
+            wallTypes[drawState.activeWallKey].wallTex[1].tex,
+            wallTypes[drawState.activeWallKey].wallTex[2].tex,
+            wallTypes[drawState.activeWallKey].wallTex[3].tex};
+        Vector2 previewPos[4] = {
+            {(coords.startX - 1) * TILE_SIZE, (coords.startY - 1) * TILE_SIZE},
+            {(coords.startX) * TILE_SIZE, (coords.startY - 1) * TILE_SIZE},
+            {(coords.startX - 1) * TILE_SIZE, (coords.startY) * TILE_SIZE},
+            {(coords.startX) * TILE_SIZE, (coords.startY) * TILE_SIZE},
+        };
+        for (int i = 0; i < 4; i++) {
+          DrawTexture(previewTex[i], previewPos[i].x, previewPos[i].y, WHITE);
+        }
+        DrawRectangleLines(previewPos[3].x - TILE_SIZE,
+                           previewPos[3].y - TILE_SIZE, TILE_SIZE * 2,
+                           TILE_SIZE * 2, RED);
         break;
+      }
       };
     }
 
@@ -338,7 +353,7 @@ int main() {
   free(manager);
   free(tileTypes);
   free(edgeTypes);
-  // sqlite3_close(db);
+  sqlite3_close(db);
   CloseWindow();
   return 0;
 }

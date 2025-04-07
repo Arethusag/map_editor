@@ -61,7 +61,7 @@ Edge *loadEdges(sqlite3 *db, Map *map);
 
 Tile *loadTiles(sqlite3 *db, Map *map);
 
-Wall *loadWalls(sqlite3 *db);
+Wall *loadWalls(sqlite3 *db, Map *map);
 
 void loadMap(sqlite3 *db, char *table, Map *map);
 

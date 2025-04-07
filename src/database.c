@@ -221,7 +221,7 @@ Tile *loadTiles(sqlite3 *db, Map *map) {
   return tileTypes;
 }
 
-Wall *loadWalls(sqlite3 *db) {
+Wall *loadWalls(sqlite3 *db, Map *map) {
 
   // Initialize variables
   Wall *wallTypes;
@@ -233,6 +233,8 @@ Wall *loadWalls(sqlite3 *db) {
   if (maxWalls == -1) {
     sqlite3_close(db);
     return NULL;
+  } else {
+    map->maxWallKey = maxWalls;
   }
 
   // Allocate memory for the walls
