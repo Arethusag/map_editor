@@ -4,8 +4,10 @@
 #include "database.h"
 #include "edge.h"
 #include "grid.h"
+#include "wall.h"
 #include <raylib.h>
 #include <sqlite3.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 int abs(int x) { return x < 0 ? -x : x; }
@@ -86,18 +88,38 @@ void drawPreview(Map *currentMap, DrawingState *drawState, Tile tileTypes[],
   for (int i = 0; i < drawState->drawnTilesCount; i++) {
     int x = drawState->drawnTiles[i][0];
     int y = drawState->drawnTiles[i][1];
-    int style = drawState->drawnTiles[i][2];
+    printf("DEBUG: recording placements at (%d,%d) with count %d\n", x, y,
+           drawState->drawnTilesCount);
 
     // Populate temp map
-    tempMap.grid[x][y][0] = drawState->activeTileKey;
-    tempMap.grid[x][y][1] = style;
+    switch (drawState->drawType) {
+
+    case DRAW_TILE:
+      tempMap.grid[x][y][0] = drawState->activeTileKey;
+      tempMap.grid[x][y][1] = drawState->drawnTiles[i][2];
+      break;
+    case DRAW_WALL:
+      tempMap.grid[x][y][2] = drawState->activeWallKey;
+      break;
+    }
   }
 
   // Get neighbors to placement
   int visitedTiles[GRID_SIZE * GRID_SIZE][2];
   int visitedCount = 0;
-  calculateEdgeGrid(drawState, visitedTiles, &visitedCount);
-  computeEdges(visitedTiles, visitedCount, &tempMap, tileTypes, edgeTypes);
+
+  switch (drawState->drawType) {
+  case DRAW_TILE: {
+    calculateEdgeGrid(drawState, visitedTiles, &visitedCount);
+    computeEdges(visitedTiles, visitedCount, &tempMap, tileTypes, edgeTypes);
+    break;
+  }
+  case DRAW_WALL: {
+    calculateWallGrid(drawState, visitedTiles, &visitedCount);
+    computeWalls(visitedTiles, visitedCount, &tempMap, wallTypes);
+    break;
+  }
+  }
 
   drawExistingMap(&tempMap, tileTypes, wallTypes, camera, windowState.width,
                   windowState.height);

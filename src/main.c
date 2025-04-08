@@ -233,23 +233,24 @@ int main() {
           break;
         }
         }
+        break;
       }
       case MODE_PAINTER: {
+        WorldCoords coords =
+            getWorldGridCoords(drawState.mousePos, drawState.mousePos, camera);
+        int x = coords.endX;
+        int y = coords.endY;
+
+        int alreadyVisited = 0;
+        for (int j = 0; j < drawState.drawnTilesCount; j++) {
+          if (drawState.drawnTiles[j][0] == x &&
+              drawState.drawnTiles[j][1] == y) {
+            alreadyVisited = 1;
+            break;
+          }
+        }
         switch (drawState.drawType) {
         case DRAW_TILE: {
-          WorldCoords coords = getWorldGridCoords(drawState.mousePos,
-                                                  drawState.mousePos, camera);
-          int x = coords.endX;
-          int y = coords.endY;
-
-          int alreadyVisited = 0;
-          for (int j = 0; j < drawState.drawnTilesCount; j++) {
-            if (drawState.drawnTiles[j][0] == x &&
-                drawState.drawnTiles[j][1] == y) {
-              alreadyVisited = 1;
-              break;
-            }
-          }
 
           if (!alreadyVisited) {
             int style = getRandTileStyle(drawState.activeTileKey, tileTypes);
@@ -264,6 +265,15 @@ int main() {
           break;
         }
         case DRAW_WALL: {
+
+          if (!alreadyVisited) {
+            drawState.drawnTiles[drawState.drawnTilesCount][0] = x;
+            drawState.drawnTiles[drawState.drawnTilesCount][1] = y;
+            drawState.drawnTilesCount++;
+          }
+
+          drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                      windowState, camera);
 
           break;
         }
@@ -310,26 +320,36 @@ int main() {
     }
 
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+      switch (drawState.drawType) {
+      case DRAW_TILE: {
 
-      // Get neighbors to placement
-      int visitedTiles[GRID_SIZE * GRID_SIZE][2];
-      int visitedCount = 0;
+        // Get neighbors to placement
+        int visitedTiles[GRID_SIZE * GRID_SIZE][2];
+        int visitedCount = 0;
 
-      calculateEdgeGrid(&drawState, visitedTiles, &visitedCount);
+        calculateEdgeGrid(&drawState, visitedTiles, &visitedCount);
 
-      // Add drawn tiles to undo/redo stack
-      createTileChangeBatch(manager, &currentMap, &drawState, visitedTiles,
-                            visitedCount);
+        // Add drawn tiles to undo/redo stack
+        createTileChangeBatch(manager, &currentMap, &drawState, visitedTiles,
+                              visitedCount);
 
-      // Texture updates
-      applyTiles(&currentMap, drawState.drawnTiles, drawState.drawnTilesCount,
-                 drawState.activeTileKey);
-      computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes,
-                   edgeTypes);
+        // Texture updates
+        applyTiles(&currentMap, drawState.drawnTiles, drawState.drawnTilesCount,
+                   drawState.activeTileKey);
+        computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes,
+                     edgeTypes);
 
-      memset(drawState.drawnTiles, 0, sizeof(drawState.drawnTiles));
+        memset(drawState.drawnTiles, 0, sizeof(drawState.drawnTiles));
 
-      drawState.isDrawing = false;
+        drawState.isDrawing = false;
+        break;
+      }
+      case DRAW_WALL: {
+        memset(drawState.drawnTiles, 0, sizeof(drawState.drawnTiles));
+        drawState.isDrawing = false;
+        break;
+      }
+      }
     }
 
     EndMode2D();

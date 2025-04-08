@@ -30,7 +30,7 @@ typedef struct Map {
   int grid[GRID_SIZE][GRID_SIZE][3];
   // 12 possible types of ground edges
   Texture2D edges[GRID_SIZE][GRID_SIZE][12];
-  // 2 possible types of wall edges
+  // 3 possible types of wall edges
   Texture2D walls[GRID_SIZE][GRID_SIZE][3];
   int edgeCount[GRID_SIZE][GRID_SIZE];
   int wallCount[GRID_SIZE][GRID_SIZE];

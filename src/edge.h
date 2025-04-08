@@ -2,12 +2,10 @@
 #ifndef EDGE_H
 #define EDGE_H
 
-// includes
 #include "database.h"
 #include "draw.h"
 #include <raylib.h>
 
-// structs
 typedef struct {
   int tileKey;
   int priority;
@@ -18,7 +16,6 @@ typedef struct {
   int priority;
 } EdgeTextureInfo;
 
-// functions
 void processCorner(NeighborInfo *edgeNumbers, NeighborInfo *neighbors,
                    bool *visitedTiles, int index, int adjacent1, int adjacent2);
 
