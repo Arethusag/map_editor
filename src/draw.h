@@ -57,8 +57,7 @@ void drawPreview(Map *currentMap, DrawingState *drawState, Tile tileTypes[],
                  Edge edgeTypes[], Wall wallTypes[], WindowState windowState,
                  Camera2D camera);
 
-void applyTiles(Map *map, int placedTiles[][3], int placedCount,
-                int activeTileKey);
+void applyTiles(Map *map, DrawingState *drawState);
 
 void drawExistingMap(Map *map, Tile tileTypes[], Wall wallTypes[],
                      Camera2D camera, int screenWidth, int screenHeight);

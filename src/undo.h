@@ -12,6 +12,7 @@ typedef struct TileChange {
   int x, y;             // Tile position
   int oldKey, oldStyle; // Old tile data
   int newKey, newStyle; // New tile data
+  DrawType drawType;
 } TileChange;
 
 typedef struct TileChangeBatch {
@@ -33,8 +34,10 @@ void createTileChangeBatch(UndoRedoManager *manager, Map *map,
                            DrawingState *drawState, int visitedTiles[][2],
                            int visitedCount);
 
-void undo(UndoRedoManager *manager, Map *map, Tile *tileTypes, Edge *edgeTypes);
+void undo(UndoRedoManager *manager, Map *map, Tile *tileTypes, Edge *edgeTypes,
+          Wall *wallTypes);
 
-void redo(UndoRedoManager *manager, Map *map, Tile *tileTypes, Edge *edgeTypes);
+void redo(UndoRedoManager *manager, Map *map, Tile *tileTypes, Edge *edgeTypes,
+          Wall *wallTypes);
 
 #endif // UNDO_H

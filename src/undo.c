@@ -2,6 +2,7 @@
 #include "database.h"
 #include "draw.h"
 #include "edge.h"
+#include "wall.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,24 +20,25 @@ void createTileChangeBatch(UndoRedoManager *manager, Map *map,
   for (int i = 0; i < drawState->drawnTilesCount; i++) {
     int x = drawState->drawnTiles[i][0];
     int y = drawState->drawnTiles[i][1];
-    int newStyle = drawState->drawnTiles[i][2];
-    int newKey = drawState->activeTileKey;
-
-    // Get old tile information from the map
-    int oldKey = map->grid[x][y][0];
-    int oldStyle = map->grid[x][y][1];
-
-    // Populate the TileChange structure
     changes[i].x = x;
     changes[i].y = y;
-    changes[i].oldKey = oldKey;
-    changes[i].oldStyle = oldStyle;
-    changes[i].newKey = newKey;
-    changes[i].newStyle = newStyle;
+    changes[i].drawType = drawState->drawType;
 
-    printf("TileChange %d: [%d, %d] OldKey=%d OldStyle=%d NewKey=%d "
-           "NewStyle=%d\n",
-           i, x, y, oldKey, oldStyle, newKey, newStyle);
+    switch (drawState->drawType) {
+    case DRAW_TILE:
+      changes[i].oldKey = map->grid[x][y][0];
+      changes[i].oldStyle = map->grid[x][y][1];
+      changes[i].newKey = drawState->activeTileKey;
+      changes[i].newStyle = drawState->drawnTiles[i][2];
+      break;
+    case DRAW_WALL:
+      changes[i].oldKey = map->grid[x][y][2];
+      changes[i].newKey = drawState->activeWallKey;
+      break;
+    }
+    printf("Creating change %d: [%d, %d] Key=%d -> Key=%d with Type=%d\n", i,
+           changes[i].x, changes[i].y, changes[i].oldKey, changes[i].newKey,
+           (int)changes[i].drawType);
   }
 
   TileChangeBatch *batch = (TileChangeBatch *)malloc(sizeof(TileChangeBatch));
@@ -82,8 +84,8 @@ void createTileChangeBatch(UndoRedoManager *manager, Map *map,
   printf("Batch added. Current batch is at %p\n", (void *)manager->current);
 }
 
-void undo(UndoRedoManager *manager, Map *map, Tile *tileTypes,
-          Edge *edgeTypes) {
+void undo(UndoRedoManager *manager, Map *map, Tile *tileTypes, Edge *edgeTypes,
+          Wall *wallTypes) {
   if (manager->current) {
     TileChangeBatch *batch = manager->current;
     printf("Undoing batch at %p with %d changes.\n", (void *)batch,
@@ -91,18 +93,25 @@ void undo(UndoRedoManager *manager, Map *map, Tile *tileTypes,
 
     for (int i = 0; i < batch->changeCount; i++) {
       TileChange *change = &batch->changes[i];
-      printf("Undoing change %d: [%d, %d] Key=%d Style=%d -> Key=%d "
-             "Style=%d\n",
-             i, change->x, change->y, change->newKey, change->newStyle,
-             change->oldKey, change->oldStyle);
 
       // Revert to old tile information
-      map->grid[change->x][change->y][0] = change->oldKey;
-      map->grid[change->x][change->y][1] = change->oldStyle;
+      printf("Undoing change %d: [%d, %d] Key=%d -> Key=%d with Type=%d\n", i,
+             change->x, change->y, change->newKey, change->oldKey,
+             (int)change->drawType);
+      switch (change->drawType) {
+      case DRAW_TILE:
+        map->grid[change->x][change->y][0] = change->oldKey;
+        map->grid[change->x][change->y][1] = change->oldStyle;
+        computeEdges(batch->visitedTiles, batch->visitedCount, map, tileTypes,
+                     edgeTypes);
+        break;
+      case DRAW_WALL:
+        map->grid[change->x][change->y][2] = change->oldKey;
+        computeWalls(batch->visitedTiles, batch->visitedCount, map, wallTypes);
+        break;
+      }
     }
 
-    computeEdges(batch->visitedTiles, batch->visitedCount, map, tileTypes,
-                 edgeTypes);
     manager->current = manager->current->prev;
     if (manager->current) {
       printf("Moved to previous batch at %p.\n", (void *)manager->current);
@@ -114,8 +123,8 @@ void undo(UndoRedoManager *manager, Map *map, Tile *tileTypes,
   }
 }
 
-void redo(UndoRedoManager *manager, Map *map, Tile *tileTypes,
-          Edge *edgeTypes) {
+void redo(UndoRedoManager *manager, Map *map, Tile *tileTypes, Edge *edgeTypes,
+          Wall *wallTypes) {
   TileChangeBatch *batch;
 
   if (manager->current && manager->current->next) {
@@ -140,13 +149,24 @@ void redo(UndoRedoManager *manager, Map *map, Tile *tileTypes,
 
   for (int i = 0; i < batch->changeCount; i++) {
     TileChange *change = &batch->changes[i];
-    printf("Redoing change %d: [%d, %d] Key=%d Style=%d -> Key=%d Style=%d\n",
-           i, change->x, change->y, change->oldKey, change->oldStyle,
-           change->newKey, change->newStyle);
+    printf("Redoing change %d: [%d, %d] Key=%d -> Key=%d with Type=%d\n", i,
+           change->x, change->y, change->oldKey, change->newKey,
+           (int)change->drawType);
 
     // Apply new tile information
-    map->grid[change->x][change->y][0] = change->newKey;
-    map->grid[change->x][change->y][1] = change->newStyle;
+
+    switch (change->drawType) {
+    case DRAW_TILE:
+      map->grid[change->x][change->y][0] = change->newKey;
+      map->grid[change->x][change->y][1] = change->newStyle;
+      computeEdges(batch->visitedTiles, batch->visitedCount, map, tileTypes,
+                   edgeTypes);
+      break;
+    case DRAW_WALL:
+      map->grid[change->x][change->y][2] = change->newKey;
+      computeWalls(batch->visitedTiles, batch->visitedCount, map, wallTypes);
+      break;
+    }
   }
 
   if (manager->current->next) {
@@ -154,6 +174,4 @@ void redo(UndoRedoManager *manager, Map *map, Tile *tileTypes,
   } else {
     printf("No next batch. Reached the end of the stack.\n");
   }
-  computeEdges(batch->visitedTiles, batch->visitedCount, map, tileTypes,
-               edgeTypes);
 }

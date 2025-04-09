@@ -1,6 +1,6 @@
 # Variables
 CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -g 
+CFLAGS = -Wall -Wextra -Wpedantic -std=c23 -g 
 LIBS = -lsqlite3 -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 TARGET = main
 SRC = src/main.c src/database.c src/edge.c src/undo.c src/command.c src/grid.c src/draw.c src/window.c src/wall.c

@@ -139,12 +139,12 @@ int main() {
     // Check for Ctrl-Z (Undo)
     if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) {
       if (IsKeyPressed(KEY_Z)) {
-        undo(manager, &currentMap, tileTypes, edgeTypes);
+        undo(manager, &currentMap, tileTypes, edgeTypes, wallTypes);
       }
 
       // Check for Ctrl-Y (Redo)
       if (IsKeyPressed(KEY_Y)) {
-        redo(manager, &currentMap, tileTypes, edgeTypes);
+        redo(manager, &currentMap, tileTypes, edgeTypes, wallTypes);
       }
     }
 
@@ -200,6 +200,22 @@ int main() {
           break;
         }
         case DRAW_WALL: {
+          WorldCoords coords = getWorldGridCoords(drawState.startPos,
+                                                  drawState.mousePos, camera);
+
+          // Calculate the size of the array based on the bounding box
+          int coordArraySize = getBoundingBoxSize(coords);
+          int coordArray[coordArraySize][2];
+
+          coordsToArray(coords, coordArray);
+
+          Array2DPtr coordData = {.arrayLength = coordArraySize,
+                                  .array = coordArray};
+
+          updateDrawnTiles(coordData, &drawState, tileTypes);
+
+          drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                      windowState, camera);
           break;
         }
         }
@@ -230,6 +246,25 @@ int main() {
           break;
         }
         case DRAW_WALL: {
+
+          WorldCoords coords = getWorldGridCoords(drawState.startPos,
+                                                  drawState.mousePos, camera);
+
+          int coordArraySize = (abs(coords.endX - coords.startX) +
+                                (abs(coords.endY - coords.startY)) + 1);
+
+          int coordArray[coordArraySize][2];
+
+          Array2DPtr pathData = {.arrayLength = coordArraySize,
+                                 .array = coordArray};
+
+          calculatePath(coords, pathData);
+
+          updateDrawnTiles(pathData, &drawState, tileTypes);
+
+          drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
+                      windowState, camera);
+
           break;
         }
         }
@@ -249,11 +284,13 @@ int main() {
             break;
           }
         }
+
         switch (drawState.drawType) {
-        case DRAW_TILE: {
+          int style;
+        case DRAW_TILE:
 
           if (!alreadyVisited) {
-            int style = getRandTileStyle(drawState.activeTileKey, tileTypes);
+            style = getRandTileStyle(drawState.activeTileKey, tileTypes);
             drawState.drawnTiles[drawState.drawnTilesCount][0] = x;
             drawState.drawnTiles[drawState.drawnTilesCount][1] = y;
             drawState.drawnTiles[drawState.drawnTilesCount][2] = style;
@@ -263,8 +300,8 @@ int main() {
           drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
                       windowState, camera);
           break;
-        }
-        case DRAW_WALL: {
+
+        case DRAW_WALL:
 
           if (!alreadyVisited) {
             drawState.drawnTiles[drawState.drawnTilesCount][0] = x;
@@ -276,7 +313,6 @@ int main() {
                       windowState, camera);
 
           break;
-        }
         }
       }
       }
@@ -287,15 +323,17 @@ int main() {
           getWorldGridCoords(drawState.mousePos, drawState.mousePos, camera);
 
       switch (drawState.drawType) {
-      case DRAW_TILE: {
-        Vector2 previewPos = {coords.startX * TILE_SIZE,
-                              coords.startY * TILE_SIZE};
-        Texture2D previewTex = tileTypes[drawState.activeTileKey].tex[0];
+        Vector2 previewPos;
+        Texture2D previewTex;
+      case DRAW_TILE:
+        previewPos =
+            (Vector2){coords.startX * TILE_SIZE, coords.startY * TILE_SIZE};
+        previewTex = tileTypes[drawState.activeTileKey].tex[0];
         DrawTexture(previewTex, previewPos.x, previewPos.y, WHITE);
         DrawRectangleLines(previewPos.x, previewPos.y, TILE_SIZE, TILE_SIZE,
                            RED);
         break;
-      }
+
       case DRAW_WALL: {
         Texture2D previewTex[4] = {
             wallTypes[drawState.activeWallKey].wallTex[0].tex,
@@ -320,12 +358,11 @@ int main() {
     }
 
     if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+      // Get neighbors to placement
+      int visitedTiles[GRID_SIZE * GRID_SIZE][2];
+      int visitedCount = 0;
       switch (drawState.drawType) {
-      case DRAW_TILE: {
-
-        // Get neighbors to placement
-        int visitedTiles[GRID_SIZE * GRID_SIZE][2];
-        int visitedCount = 0;
+      case DRAW_TILE:
 
         calculateEdgeGrid(&drawState, visitedTiles, &visitedCount);
 
@@ -334,8 +371,7 @@ int main() {
                               visitedCount);
 
         // Texture updates
-        applyTiles(&currentMap, drawState.drawnTiles, drawState.drawnTilesCount,
-                   drawState.activeTileKey);
+        applyTiles(&currentMap, &drawState);
         computeEdges(visitedTiles, visitedCount, &currentMap, tileTypes,
                      edgeTypes);
 
@@ -343,12 +379,15 @@ int main() {
 
         drawState.isDrawing = false;
         break;
-      }
-      case DRAW_WALL: {
+      case DRAW_WALL:
+        calculateWallGrid(&drawState, visitedTiles, &visitedCount);
+        createTileChangeBatch(manager, &currentMap, &drawState, visitedTiles,
+                              visitedCount);
+        applyTiles(&currentMap, &drawState);
+        computeWalls(visitedTiles, visitedCount, &currentMap, wallTypes);
         memset(drawState.drawnTiles, 0, sizeof(drawState.drawnTiles));
         drawState.isDrawing = false;
         break;
-      }
       }
     }
 

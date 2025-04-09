@@ -88,8 +88,6 @@ void drawPreview(Map *currentMap, DrawingState *drawState, Tile tileTypes[],
   for (int i = 0; i < drawState->drawnTilesCount; i++) {
     int x = drawState->drawnTiles[i][0];
     int y = drawState->drawnTiles[i][1];
-    printf("DEBUG: recording placements at (%d,%d) with count %d\n", x, y,
-           drawState->drawnTilesCount);
 
     // Populate temp map
     switch (drawState->drawType) {
@@ -109,32 +107,35 @@ void drawPreview(Map *currentMap, DrawingState *drawState, Tile tileTypes[],
   int visitedCount = 0;
 
   switch (drawState->drawType) {
-  case DRAW_TILE: {
+  case DRAW_TILE:
     calculateEdgeGrid(drawState, visitedTiles, &visitedCount);
     computeEdges(visitedTiles, visitedCount, &tempMap, tileTypes, edgeTypes);
     break;
-  }
-  case DRAW_WALL: {
+  case DRAW_WALL:
     calculateWallGrid(drawState, visitedTiles, &visitedCount);
     computeWalls(visitedTiles, visitedCount, &tempMap, wallTypes);
     break;
-  }
   }
 
   drawExistingMap(&tempMap, tileTypes, wallTypes, camera, windowState.width,
                   windowState.height);
 }
 
-void applyTiles(Map *map, int placedTiles[][3], int placedCount,
-                int activeTileKey) {
+void applyTiles(Map *map, DrawingState *drawState) {
 
-  for (int i = 0; i < placedCount; i++) {
-    int x = placedTiles[i][0];
-    int y = placedTiles[i][1];
-    int style = placedTiles[i][2];
+  for (int i = 0; i < drawState->drawnTilesCount; i++) {
+    int x = drawState->drawnTiles[i][0];
+    int y = drawState->drawnTiles[i][1];
 
-    map->grid[x][y][0] = activeTileKey;
-    map->grid[x][y][1] = style;
+    switch (drawState->drawType) {
+    case DRAW_TILE:
+      map->grid[x][y][0] = drawState->activeTileKey;
+      map->grid[x][y][1] = drawState->drawnTiles[i][2];
+      break;
+    case DRAW_WALL:
+      map->grid[x][y][2] = drawState->activeWallKey;
+      break;
+    }
   }
 }
 
