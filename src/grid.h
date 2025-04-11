@@ -26,6 +26,10 @@ WorldCoords GetVisibleGridBounds(Camera2D camera, int screenWidth,
 
 void coordsToArray(WorldCoords coords, int coordArray[][2]);
 
+void coordsToPerimeterArray(WorldCoords coords, int coordArray[][2]);
+
 int getBoundingBoxSize(WorldCoords coords);
+
+int getBoundingPerimeterSize(WorldCoords coords);
 
 #endif // GRID_H

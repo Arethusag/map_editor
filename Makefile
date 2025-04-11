@@ -12,7 +12,7 @@ DB = test.db
 all: $(DB) $(TARGET)
 
 # Run setup scripts
-$(DB): utils/setup.sh utils/extract_sprites.sh assets/sprites.conf utils/generate_tables.sh utils/insert_sample_map.sh
+$(DB): utils/setup.sh utils/extract_wall_sprites.sh utils/extract_tile_sprites.sh assets/tile_sprites.conf assets/wall_sprites.conf utils/generate_tables.sh utils/insert_sample_map.sh
 	./utils/setup.sh
 
 # Build target

@@ -43,15 +43,12 @@ typedef struct WallTexture {
   Texture2D tex;
   int wall_quadrant_key;
   int quadrant_key;
-  int primary_quadrant_indicator;
-  const char *quadrant_description;
+  int primary_wall_quadrant_indicator;
 } WallTexture;
 
 typedef struct Wall {
   int wallKey;
   WallTexture wallTex[4];
-  const char *name;
-  const char *orientation;
 } Wall;
 
 // Function prototypes

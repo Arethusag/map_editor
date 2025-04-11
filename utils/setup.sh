@@ -38,28 +38,66 @@ INSERT INTO tile (tile_key, walkable, description, edge_indicator, edge_priority
 ; 
 END_SQL
 
-# Create wall table and insert records
+# Create wall table and insert default value
 sqlite3 "$DB_FILE" <<'END_SQL'
 DROP TABLE IF EXISTS wall;
 CREATE TABLE IF NOT EXISTS wall(
     wall_key INTEGER PRIMARY KEY,
-    name TEXT NOT NULL,
-    orientation NOT NULL
+    orientation_key INTEGER NOT NULL,
+    wall_group_key INTEGER NOT NULL,
+    wall_type_key INTEGER NOT NULL,
+    FOREIGN KEY (orientation_key) REFERENCES orientation(orientation_key),
+    FOREIGN KEY (wall_group_key) REFERENCES orientation(wall_group_key),
+    FOREIGN KEY (wall_type_key) REFERENCES orientation(wall_type_key)
 ) WITHOUT rowid;
-INSERT INTO wall (wall_key, name, orientation)
-    VALUES (0, 'default', 'N/A')
 END_SQL
 
-# Create wall type table and insert records
+# Create orientation table
+sqlite3 "$DB_FILE" <<'END_SQL'
+DROP TABLE IF EXISTS orientation;
+CREATE TABLE IF NOT EXISTS orientation(
+    orientation_key INTEGER PRIMARY KEY,
+    description TEXT NOT NULL
+) WITHOUT rowid;
+END_SQL
+
+# Create orientation table
+sqlite3 "$DB_FILE" <<'END_SQL'
+DROP TABLE IF EXISTS wall_type;
+CREATE TABLE IF NOT EXISTS wall_type(
+    wall_type_key INTEGER PRIMARY KEY,
+    description TEXT NOT NULL
+) WITHOUT rowid;
+END_SQL
+
+# Create orientation table
+sqlite3 "$DB_FILE" <<'END_SQL'
+DROP TABLE IF EXISTS wall_group;
+CREATE TABLE IF NOT EXISTS wall_group(
+    wall_group_key INTEGER PRIMARY KEY,
+    description TEXT NOT NULL
+) WITHOUT rowid;
+END_SQL
+
+# Create wall quadrant table
 sqlite3 "$DB_FILE" <<'END_SQL'
 DROP TABLE IF EXISTS wall_quadrant;
 CREATE TABLE IF NOT EXISTS wall_quadrant(
     wall_quadrant_key INTEGER PRIMARY KEY,
     wall_key INTEGER NOT NULL,
     quadrant_key INTEGER NOT NULL,
-    quadrant_description TEXT NOT NULL,
-    primary_quadrant_indicator INT CHECK(primary_quadrant_indicator IN (0,1)),
-    FOREIGN KEY (wall_key) REFERENCES wall_type(wall_key)
+    primary_wall_quadrant_indicator INT CHECK(primary_wall_quadrant_indicator IN (0,1)),
+    FOREIGN KEY (wall_key) REFERENCES wall_type(wall_key),
+    FOREIGN KEY (quadrant_key) REFERENCES quadrant(quadrant_key)
+) WITHOUT rowid;
+END_SQL
+
+# Create quadrant table
+sqlite3 "$DB_FILE" <<'END_SQL'
+DROP TABLE IF EXISTS quadrant;
+CREATE TABLE IF NOT EXISTS quadrant(
+    quadrant_key INTEGER PRIMARY KEY,
+    description TEXT NOT NULL
 ) WITHOUT rowid;
 END_SQL
 
@@ -118,7 +156,8 @@ END_SQL
 rm -f $FILE
 
 # Process remaining tiles
-bash utils/extract_sprites.sh
+bash utils/extract_tile_sprites.sh
+bash utils/extract_wall_sprites.sh
 
 # Generate tables
 bash utils/generate_tables.sh

@@ -204,10 +204,10 @@ int main() {
                                                   drawState.mousePos, camera);
 
           // Calculate the size of the array based on the bounding box
-          int coordArraySize = getBoundingBoxSize(coords);
+          int coordArraySize = getBoundingPerimeterSize(coords);
           int coordArray[coordArraySize][2];
 
-          coordsToArray(coords, coordArray);
+          coordsToPerimeterArray(coords, coordArray);
 
           Array2DPtr coordData = {.arrayLength = coordArraySize,
                                   .array = coordArray};

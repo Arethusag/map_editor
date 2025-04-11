@@ -67,6 +67,31 @@ WorldCoords getWorldGridCoords(Vector2 startPos, Vector2 endPos,
   return coords;
 }
 
+void coordsToPerimeterArray(WorldCoords coords, int coordArray[][2]) {
+  int minX = (coords.startX <= coords.endX) ? coords.startX : coords.endX;
+  int maxX = (coords.startX <= coords.endX) ? coords.endX : coords.startX;
+  int minY = (coords.startY <= coords.endY) ? coords.startY : coords.endY;
+  int maxY = (coords.startY <= coords.endY) ? coords.endY : coords.startY;
+
+  int coordArrayCount = 0;
+  for (int x = minX; x <= maxX; x++) {
+    coordArray[coordArrayCount][0] = x;
+    coordArray[coordArrayCount][1] = minY;
+    coordArrayCount++;
+    coordArray[coordArrayCount][0] = x;
+    coordArray[coordArrayCount][1] = maxY;
+    coordArrayCount++;
+  }
+  for (int y = (minY + 1); y < maxY; y++) {
+    coordArray[coordArrayCount][0] = minX;
+    coordArray[coordArrayCount][1] = y;
+    coordArrayCount++;
+    coordArray[coordArrayCount][0] = maxX;
+    coordArray[coordArrayCount][1] = y;
+    coordArrayCount++;
+  }
+}
+
 void coordsToArray(WorldCoords coords, int coordArray[][2]) {
   int minX = (coords.startX <= coords.endX) ? coords.startX : coords.endX;
   int maxX = (coords.startX <= coords.endX) ? coords.endX : coords.startX;
@@ -91,4 +116,18 @@ int getBoundingBoxSize(WorldCoords coords) {
                                             : coords.startY - coords.endY) +
               1;
   return sizeX * sizeY;
+}
+
+int getBoundingPerimeterSize(WorldCoords coords) {
+  int sizeX = (coords.startX <= coords.endX ? coords.endX - coords.startX
+                                            : coords.startX - coords.endX) +
+              1;
+  int sizeY = (coords.startY <= coords.endY ? coords.endY - coords.startY
+                                            : coords.startY - coords.endY) +
+              1;
+  if (sizeX == 1 || sizeY == 1) {
+    return sizeX * sizeY;
+  } else {
+    return (2 * sizeX) + (2 * sizeY) - 4;
+  }
 }
