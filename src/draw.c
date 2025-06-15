@@ -97,7 +97,11 @@ void drawPreview(Map *currentMap, DrawingState *drawState, Tile tileTypes[],
       tempMap.grid[x][y][1] = drawState->drawnTiles[i][2];
       break;
     case DRAW_WALL:
-      tempMap.grid[x][y][2] = drawState->activeWallKey;
+      if (drawState->mode == MODE_BOX) {
+        tempMap.grid[x][y][2] = drawState->drawnTiles[i][2];
+      } else {
+        tempMap.grid[x][y][2] = drawState->activeWallKey;
+      }
       break;
     }
   }
@@ -133,7 +137,11 @@ void applyTiles(Map *map, DrawingState *drawState) {
       map->grid[x][y][1] = drawState->drawnTiles[i][2];
       break;
     case DRAW_WALL:
-      map->grid[x][y][2] = drawState->activeWallKey;
+      if (drawState->mode == MODE_BOX) {
+        map->grid[x][y][2] = drawState->drawnTiles[i][2];
+      } else {
+        map->grid[x][y][2] = drawState->activeWallKey;
+      }
       break;
     }
   }

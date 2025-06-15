@@ -4,6 +4,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define DEBUG
+#ifdef DEBUG
+#define DBG(fmt, ...) fprintf(stderr, fmt, ##__VA_ARGS__)
+#else
+#define DBG(fmt, ...)
+#endif
+
 // Variables
 Color transparencyKey = {255, 0, 255, 255};
 
@@ -245,11 +252,15 @@ Wall *loadWalls(sqlite3 *db, Map *map) {
   }
 
   // Load wall textures from database
-  const char *wallQuery = "SELECT wall_key FROM wall;";
+  const char *wallQuery = "SELECT wall_key, orientation_key, wall_group_key, "
+                          "wall_type_key FROM wall;";
   sqlite3_stmt *wallStmt;
   if (sqlite3_prepare_v2(db, wallQuery, -1, &wallStmt, NULL) == SQLITE_OK) {
     while (sqlite3_step(wallStmt) == SQLITE_ROW) {
       int wallKey = sqlite3_column_int(wallStmt, 0);
+      int orientationKey = sqlite3_column_int(wallStmt, 1);
+      int wallGroupKey = sqlite3_column_int(wallStmt, 2);
+      int wallTypeKey = sqlite3_column_int(wallStmt, 3);
 
       WallTexture wallTex[4];
       char wallKeyStr[20];
@@ -284,7 +295,11 @@ Wall *loadWalls(sqlite3 *db, Map *map) {
       }
       sqlite3_finalize(texStmt);
 
-      wallTypes[wallKey] = (Wall){.wallKey = wallKey, .wallTex = {{{0}}}};
+      wallTypes[wallKey] = (Wall){.wallKey = wallKey,
+                                  .wallTex = {{{0}}},
+                                  .orientationKey = orientationKey,
+                                  .wallGroupKey = wallGroupKey,
+                                  .wallTypeKey = wallTypeKey};
 
       // Explicitly copy the textures
       memcpy(wallTypes[wallKey].wallTex, wallTex, 4 * sizeof(WallTexture));
@@ -416,4 +431,134 @@ void saveMap(sqlite3 *db, char *table, Map *map) {
     return;
   }
   sqlite3_finalize(insertStmt); // Finalize insert statement if it was prepared
+}
+
+static void dumpWallOrientMap(const WallOrientMap *map) {
+  fprintf(stderr, "DUMP: capacity=%d size=%d\n", map->capacity, map->size);
+  for (int i = 0; i < map->capacity; ++i) {
+    Entry *e = map->buckets[i];
+    if (!e)
+      continue;
+    fprintf(stderr, "  bucket %d:\n", i);
+    while (e) {
+      fprintf(stderr, "    src=%d orient=%d tgt=%d\n", e->sourceWallKey,
+              e->orientationKey, e->targetWallKey);
+      e = e->next;
+    }
+  }
+}
+
+WallOrientMap *loadWallOrientationsMap(sqlite3 *db) {
+
+  const char *count_qry =
+      "SELECT COUNT(*) "
+      "FROM wall AS w_source "
+      "JOIN wall AS w_target "
+      "ON w_source.wall_group_key = w_target.wall_group_key "
+      "AND w_target.wall_type_key = 1;";
+
+  sqlite3_stmt *count_stmt;
+  int count = -1;
+
+  if (sqlite3_prepare_v2(db, count_qry, -1, &count_stmt, NULL) == SQLITE_OK) {
+    if (sqlite3_step(count_stmt) == SQLITE_ROW) {
+      count = sqlite3_column_int(count_stmt, 0);
+      DBG("DEBUG: want to load %d entries\n", count);
+    } else {
+      fprintf(stderr, "Error stepping count query: %s\n", sqlite3_errmsg(db));
+    }
+  } else {
+    fprintf(stderr, "Error preparing count query: %s\n", sqlite3_errmsg(db));
+  }
+  sqlite3_finalize(count_stmt);
+
+  const char *qry = "SELECT w_source.wall_key AS source_key, "
+                    "       w_target.orientation_key AS orientation_key, "
+                    "       w_target.wall_key AS target_key "
+                    "FROM wall AS w_source "
+                    "JOIN wall AS w_target "
+                    "  ON w_source.wall_group_key = w_target.wall_group_key "
+                    " AND w_target.wall_type_key = 1;";
+
+  sqlite3_stmt *stmt;
+
+  if (sqlite3_prepare_v2(db, qry, -1, &stmt, NULL) != SQLITE_OK) {
+    fprintf(stderr, "Error preparing load query: %s\n", sqlite3_errmsg(db));
+    return NULL;
+  }
+
+  if (count <= 0)
+    return NULL;
+  WallOrientMap *map = (WallOrientMap *)malloc(sizeof(WallOrientMap));
+  if (!map)
+    return NULL;
+
+  int capacity = (int)(((double)count / 0.75) + 1.0);
+  map->capacity = capacity;
+  map->size = 0;
+  map->buckets = (Entry **)calloc(capacity, sizeof(Entry *));
+  if (!map->buckets) {
+    free(map);
+    return NULL;
+  }
+
+  int num_entries = 0;
+  bool error_occurred = false;
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    int source_key = sqlite3_column_int(stmt, 0);
+    int orientation_key = sqlite3_column_int(stmt, 1);
+    int target_key = sqlite3_column_int(stmt, 2);
+    unsigned int hash_val =
+        ((unsigned int)source_key ^ ((unsigned int)orientation_key << 1)) %
+        capacity;
+
+    DBG("DEBUG row %d: source=%d orient=%d target=%d → bucket %u\n",
+        num_entries, source_key, orientation_key, target_key, hash_val);
+
+    Entry *newEntry = (Entry *)malloc(sizeof(Entry));
+    if (!newEntry) {
+      perror("Failed to allocate memory for new entry");
+      error_occurred = true;
+      break;
+    }
+    newEntry->sourceWallKey = source_key;
+    newEntry->orientationKey = orientation_key;
+    newEntry->targetWallKey = target_key;
+
+    newEntry->next = map->buckets[hash_val];
+    map->buckets[hash_val] = newEntry;
+    map->size++;
+
+    num_entries++;
+  }
+
+  int step_result = sqlite3_errcode(db);
+  if (error_occurred ||
+      (step_result != SQLITE_DONE && step_result != SQLITE_OK)) {
+    if (!error_occurred) {
+      fprintf(stderr, "Error stepping through load query results: %s\n",
+              sqlite3_errmsg(db));
+    }
+    for (int i = 0; i < map->capacity; ++i) {
+      Entry *current = map->buckets[i];
+      while (current != NULL) {
+        Entry *temp = current;
+        current = current->next;
+        free(temp);
+      }
+    }
+    free(map->buckets);
+    free(map);
+    sqlite3_finalize(stmt);
+    return NULL;
+  }
+
+  printf("Loaded %d wall orientation entries into hash map with capacity %d.\n",
+         num_entries, map->capacity);
+
+  DBG("Finished stepping through rows, total inserted=%d\n", num_entries);
+  dumpWallOrientMap(map);
+
+  sqlite3_finalize(stmt);
+  return map;
 }

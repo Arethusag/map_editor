@@ -39,6 +39,9 @@ int main() {
   computeMapEdges(tileTypes, edgeTypes, &currentMap);
   computeMapWalls(wallTypes, &currentMap);
 
+  // Load Hash Tables
+  WallOrientMap *wallOrientationMap = loadWallOrientationsMap(db);
+
   // Initialize Undo/Redo manager
   UndoRedoManager *manager = (UndoRedoManager *)malloc(sizeof(UndoRedoManager));
   manager->head = NULL;
@@ -214,6 +217,8 @@ int main() {
 
           updateDrawnTiles(coordData, &drawState, tileTypes);
 
+          calculateWallOrientations(&drawState, wallOrientationMap);
+
           drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
                       windowState, camera);
           break;
@@ -381,6 +386,9 @@ int main() {
         break;
       case DRAW_WALL:
         calculateWallGrid(&drawState, visitedTiles, &visitedCount);
+        if (drawState.mode == MODE_BOX) {
+          calculateWallOrientations(&drawState, wallOrientationMap);
+        }
         createTileChangeBatch(manager, &currentMap, &drawState, visitedTiles,
                               visitedCount);
         applyTiles(&currentMap, &drawState);
@@ -409,6 +417,19 @@ int main() {
     free(batch);
     batch = nextBatch;
   }
+
+  // free wall orientation
+  for (int i = 0; i < wallOrientationMap->capacity; ++i) {
+    Entry *current = wallOrientationMap->buckets[i];
+    while (current != NULL) {
+      Entry *temp = current;
+      current = current->next;
+      free(temp);
+    }
+  }
+
+  free(wallOrientationMap->buckets);
+  free(wallOrientationMap);
   free(manager);
   free(tileTypes);
   free(edgeTypes);

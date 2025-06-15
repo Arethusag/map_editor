@@ -10,12 +10,12 @@
 #include <raylib.h>
 #include <sqlite3.h>
 
-typedef struct Edge { // ground tile edges
+typedef struct { // ground tile edges
   int tileKey;
   Texture2D edges[12];
 } Edge;
 
-typedef struct Tile { // ground tiles
+typedef struct { // ground tiles
   int tileKey;
   int walkable;
   Texture2D tex[MAX_TILE_VARIANTS];
@@ -24,7 +24,7 @@ typedef struct Tile { // ground tiles
   int edgeIndicator;
 } Tile;
 
-typedef struct Map {
+typedef struct {
   const char *name;
   // x, y, 1: tileKey, 2: tileStyle 3: wallKey
   int grid[GRID_SIZE][GRID_SIZE][3];
@@ -39,17 +39,33 @@ typedef struct Map {
   int countEdges;
 } Map;
 
-typedef struct WallTexture {
+typedef struct {
   Texture2D tex;
   int wall_quadrant_key;
   int quadrant_key;
   int primary_wall_quadrant_indicator;
 } WallTexture;
 
-typedef struct Wall {
+typedef struct {
   int wallKey;
   WallTexture wallTex[4];
+  int wallGroupKey;
+  int wallTypeKey;
+  int orientationKey;
 } Wall;
+
+typedef struct Entry {
+  int sourceWallKey;
+  int orientationKey;
+  int targetWallKey;
+  struct Entry *next;
+} Entry;
+
+typedef struct {
+  int capacity;
+  int size;
+  Entry **buckets;
+} WallOrientMap;
 
 // Function prototypes
 sqlite3 *connectDatabase(void);
@@ -63,5 +79,7 @@ Wall *loadWalls(sqlite3 *db, Map *map);
 void loadMap(sqlite3 *db, char *table, Map *map);
 
 void saveMap(sqlite3 *db, char *table, Map *map);
+
+WallOrientMap *loadWallOrientationsMap(sqlite3 *db);
 
 #endif // DATABASE_H

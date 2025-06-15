@@ -25,7 +25,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
                            VALUES ($wall_type_key, '$wall_type_description');"
         
         sqlite3 "$DB_FILE" "INSERT OR IGNORE INTO wall_group (wall_group_key, description)
-                           VALUES ($wall_group_key, '$wall_type_description');"
+                           VALUES ($wall_group_key, '$wall_group_description');"
 
         IFS=, 
         quadrant_key=0
