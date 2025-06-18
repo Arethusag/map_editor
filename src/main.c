@@ -69,10 +69,11 @@ int main() {
 
   // Initialize drawing state
   DrawingState drawState = {0};
-  drawState.drawType = DRAW_TILE; // Start in tile drawing mode
-  drawState.mode = MODE_PAINTER;  // Default mode is painter
-  drawState.activeTileKey = 0;    // Initialize to a default tile
-  drawState.activeWallKey = 0;    // Initialize to a default wall
+  drawState.drawType = DRAW_TILE;     // Start in tile drawing mode
+  drawState.drawMode = MODE_PAINTER;  // Default mode is painter
+  drawState.pathMode = PATH_DIAGONAL; // Default path is diagonal
+  drawState.activeTileKey = 0;        // Initialize to a default tile
+  drawState.activeWallKey = 0;        // Initialize to a default wall
   drawState.isDrawing = false;
   drawState.drawnTilesCount = 0;
 
@@ -165,11 +166,11 @@ int main() {
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
       // Decide the drawing mode based on modifier keys
       if (IsKeyDown(KEY_LEFT_SHIFT)) {
-        drawState.mode = MODE_BOX;
+        drawState.drawMode = MODE_BOX;
       } else if (IsKeyDown(KEY_LEFT_CONTROL)) {
-        drawState.mode = MODE_PATHING;
+        drawState.drawMode = MODE_PATHING;
       } else {
-        drawState.mode = MODE_PAINTER;
+        drawState.drawMode = MODE_PAINTER;
       }
       // Store the position where drawing started
       drawState.startPos = drawState.mousePos;
@@ -179,7 +180,7 @@ int main() {
 
     if (drawState.isDrawing) {
       // Box (Shift) mode drawing
-      switch (drawState.mode) {
+      switch (drawState.drawMode) {
       case MODE_BOX: {
         switch (drawState.drawType) {
         case DRAW_TILE: {
@@ -241,7 +242,7 @@ int main() {
           Array2DPtr pathData = {.arrayLength = coordArraySize,
                                  .array = coordArray};
 
-          calculatePath(coords, pathData);
+          calculatePath(coords, pathData, &drawState);
 
           updateDrawnTiles(pathData, &drawState, tileTypes);
 
@@ -263,9 +264,11 @@ int main() {
           Array2DPtr pathData = {.arrayLength = coordArraySize,
                                  .array = coordArray};
 
-          calculatePath(coords, pathData);
+          calculatePath(coords, pathData, &drawState);
 
           updateDrawnTiles(pathData, &drawState, tileTypes);
+
+          calculateWallOrientations(&drawState, wallOrientationMap);
 
           drawPreview(&currentMap, &drawState, tileTypes, edgeTypes, wallTypes,
                       windowState, camera);
@@ -386,7 +389,7 @@ int main() {
         break;
       case DRAW_WALL:
         calculateWallGrid(&drawState, visitedTiles, &visitedCount);
-        if (drawState.mode == MODE_BOX) {
+        if (drawState.drawMode == MODE_BOX) {
           calculateWallOrientations(&drawState, wallOrientationMap);
         }
         createTileChangeBatch(manager, &currentMap, &drawState, visitedTiles,

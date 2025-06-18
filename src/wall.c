@@ -1,5 +1,6 @@
 #include "wall.h"
 #include "database.h"
+#include "draw.h"
 #include "edge.h"
 #include <limits.h>
 #include <raylib.h>
@@ -101,18 +102,92 @@ void calculateWallOrientations(DrawingState *drawState, WallOrientMap *map) {
     int orient = WALL_STYLE_NONE;
 
     // corner/post/edge logic
-    if (x == maxX && y == maxY)
-      orient = WALL_STYLE_CORNER;
-    else if (x == minX && y == minY)
-      orient = WALL_STYLE_POST;
-    else if (x == minX && y == maxY)
-      orient = WALL_STYLE_VERTICAL;
-    else if (x == maxX && y == minY)
-      orient = WALL_STYLE_HORIZONTAL;
-    else if (y == minY || y == maxY)
-      orient = WALL_STYLE_HORIZONTAL;
-    else if (x == minX || x == maxX)
-      orient = WALL_STYLE_VERTICAL;
+    switch (drawState->drawMode) {
+    case MODE_BOX:
+      if (x == maxX && y == maxY)
+        orient = WALL_STYLE_CORNER;
+      else if (x == minX && y == minY)
+        orient = WALL_STYLE_POST;
+      else if (x == minX && y == maxY)
+        orient = WALL_STYLE_VERTICAL;
+      else if (x == maxX && y == minY)
+        orient = WALL_STYLE_HORIZONTAL;
+      else if (y == minY || y == maxY)
+        orient = WALL_STYLE_HORIZONTAL;
+      else if (x == minX || x == maxX)
+        orient = WALL_STYLE_VERTICAL;
+      break;
+    case MODE_PATHING:
+      if (x == maxX && y == maxY) {
+        if (drawState->pathQuadrant == QUADRANT_SOUTHEAST &&
+            drawState->pathMode == PATH_STEEP) {
+          orient = WALL_STYLE_HORIZONTAL;
+        } else if (drawState->pathQuadrant == QUADRANT_SOUTHEAST &&
+                   drawState->pathMode == PATH_SHALLOW) {
+          orient = WALL_STYLE_VERTICAL;
+        } else if (drawState->pathQuadrant == QUADRANT_NORTHWEST &&
+                   drawState->pathMode == PATH_SHALLOW) {
+          orient = WALL_STYLE_HORIZONTAL;
+        } else if (drawState->pathQuadrant == QUADRANT_NORTHWEST &&
+                   drawState->pathMode == PATH_STEEP) {
+          orient = WALL_STYLE_VERTICAL;
+        } else if (drawState->pathQuadrant == QUADRANT_NORTH ||
+                   drawState->pathQuadrant == QUADRANT_SOUTH) {
+          orient = WALL_STYLE_VERTICAL;
+        } else if (drawState->pathQuadrant == QUADRANT_WEST ||
+                   drawState->pathQuadrant == QUADRANT_EAST) {
+          orient = WALL_STYLE_HORIZONTAL;
+        } else {
+          // Default case for this corner
+          orient = WALL_STYLE_CORNER;
+        }
+      } else if (x == minX && y == minY) {
+        if (drawState->pathQuadrant == QUADRANT_NORTHWEST &&
+            drawState->pathMode == PATH_STEEP) {
+          orient = WALL_STYLE_HORIZONTAL;
+        } else if (drawState->pathQuadrant == QUADRANT_NORTHWEST &&
+                   drawState->pathMode == PATH_SHALLOW) {
+          orient = WALL_STYLE_VERTICAL;
+        } else {
+          // Default case for this corner
+          orient = WALL_STYLE_POST;
+        }
+      } else if (x == minX && y == maxY) {
+        if (drawState->pathQuadrant == QUADRANT_SOUTHWEST &&
+            drawState->pathMode == PATH_STEEP) {
+          orient = WALL_STYLE_HORIZONTAL;
+        } else if (drawState->pathQuadrant == QUADRANT_SOUTHWEST &&
+                   drawState->pathMode == PATH_SHALLOW) {
+          orient = WALL_STYLE_VERTICAL;
+        } else if (drawState->pathQuadrant == QUADRANT_NORTHEAST &&
+                   drawState->pathMode == PATH_SHALLOW) {
+          orient = WALL_STYLE_POST;
+        } else {
+          // Default case for this corner
+          orient = WALL_STYLE_VERTICAL;
+        }
+      } else if (x == maxX && y == minY) {
+        if (drawState->pathQuadrant == QUADRANT_NORTHEAST &&
+            drawState->pathMode == PATH_STEEP) {
+          orient = WALL_STYLE_HORIZONTAL;
+        } else if (drawState->pathQuadrant == QUADRANT_NORTHEAST &&
+                   drawState->pathMode == PATH_SHALLOW) {
+          orient = WALL_STYLE_VERTICAL;
+        } else if (drawState->pathQuadrant == QUADRANT_SOUTHWEST &&
+                   drawState->pathMode == PATH_STEEP) {
+          orient = WALL_STYLE_POST;
+        } else {
+          // Default case for this corner
+          orient = WALL_STYLE_HORIZONTAL;
+        }
+      } else if (y == minY || y == maxY) {
+        orient = WALL_STYLE_HORIZONTAL;
+      } else if (x == minX || x == maxX) {
+        orient = WALL_STYLE_VERTICAL;
+      }
+    case MODE_PAINTER:
+      break;
+    }
 
     // debug
     fprintf(stderr, "  tile %2d: (%2d,%2d) => orient=%d ", i, x, y, orient);

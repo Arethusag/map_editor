@@ -22,7 +22,8 @@ int getRandTileStyle(int tileKey, Tile *tileTypes) {
   }
 }
 
-void calculatePath(WorldCoords coords, Array2DPtr pathData) {
+void calculatePath(WorldCoords coords, Array2DPtr pathData,
+                   DrawingState *drawState) {
   int dx = coords.endX - coords.startX;
   int dy = coords.endY - coords.startY;
   int steps = abs(dx) + abs(dy) + 1;
@@ -31,7 +32,32 @@ void calculatePath(WorldCoords coords, Array2DPtr pathData) {
   pathData.array[count][1] = coords.startY;
   count++;
 
+  // This logic is based on a coordinate system where (1,1) is the top-left.
+  // Therefore, a positive dy means moving South (down), and a negative dy
+  // means moving North (up).
+  // Prioritize cardinal directions first.
+  if (dx == 0 && dy < 0) {
+    drawState->pathQuadrant = QUADRANT_NORTH;
+  } else if (dx == 0 && dy > 0) {
+    drawState->pathQuadrant = QUADRANT_SOUTH;
+  } else if (dy == 0 && dx > 0) {
+    drawState->pathQuadrant = QUADRANT_EAST;
+  } else if (dy == 0 && dx < 0) {
+    drawState->pathQuadrant = QUADRANT_WEST;
+  }
+  // Fallback to diagonal quadrants if not a pure cardinal direction.
+  else if (dx > 0 && dy < 0) {
+    drawState->pathQuadrant = QUADRANT_NORTHEAST;
+  } else if (dx > 0 && dy > 0) {
+    drawState->pathQuadrant = QUADRANT_SOUTHEAST;
+  } else if (dx < 0 && dy > 0) {
+    drawState->pathQuadrant = QUADRANT_SOUTHWEST;
+  } else if (dx < 0 && dy < 0) {
+    drawState->pathQuadrant = QUADRANT_NORTHWEST;
+  }
+
   if (abs(dx) == abs(dy)) {
+    drawState->pathMode = PATH_DIAGONAL;
     int stepX = (dx > 0) ? 1 : (dx < 0) ? -1 : 0;
     int stepY = (dy > 0) ? 1 : (dy < 0) ? -1 : 0;
     for (int i = 0; i <= steps; i++) {
@@ -39,6 +65,7 @@ void calculatePath(WorldCoords coords, Array2DPtr pathData) {
       pathData.array[i][1] = coords.startY + i / 2 * stepY;
     }
   } else if (abs(dx) > abs(dy)) {
+    drawState->pathMode = PATH_SHALLOW;
     int bendX = (dx != 0) ? coords.endX : coords.startX;
     int bendY = (dy != 0) ? coords.startY : coords.endY;
 
@@ -56,6 +83,7 @@ void calculatePath(WorldCoords coords, Array2DPtr pathData) {
       count++;
     }
   } else if (abs(dy) > abs(dx)) {
+    drawState->pathMode = PATH_STEEP;
     int count = 1;
     int bendX = (dx != 0) ? coords.startX : coords.endX;
     int bendY = (dy != 0) ? coords.startY : coords.endY;
@@ -97,10 +125,10 @@ void drawPreview(Map *currentMap, DrawingState *drawState, Tile tileTypes[],
       tempMap.grid[x][y][1] = drawState->drawnTiles[i][2];
       break;
     case DRAW_WALL:
-      if (drawState->mode == MODE_BOX) {
-        tempMap.grid[x][y][2] = drawState->drawnTiles[i][2];
-      } else {
+      if (drawState->drawMode == MODE_PAINTER) {
         tempMap.grid[x][y][2] = drawState->activeWallKey;
+      } else {
+        tempMap.grid[x][y][2] = drawState->drawnTiles[i][2];
       }
       break;
     }
@@ -137,10 +165,10 @@ void applyTiles(Map *map, DrawingState *drawState) {
       map->grid[x][y][1] = drawState->drawnTiles[i][2];
       break;
     case DRAW_WALL:
-      if (drawState->mode == MODE_BOX) {
-        map->grid[x][y][2] = drawState->drawnTiles[i][2];
-      } else {
+      if (drawState->drawMode == MODE_PAINTER) {
         map->grid[x][y][2] = drawState->activeWallKey;
+      } else {
+        map->grid[x][y][2] = drawState->drawnTiles[i][2];
       }
       break;
     }
