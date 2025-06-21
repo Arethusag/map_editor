@@ -4,6 +4,7 @@
 #include "draw.h"
 #include "edge.h"
 #include "grid.h"
+#include "math.h"
 #include "undo.h"
 #include "wall.h"
 #include "window.h"
@@ -69,13 +70,16 @@ int main() {
 
   // Initialize drawing state
   DrawingState drawState = {0};
-  drawState.drawType = DRAW_TILE;     // Start in tile drawing mode
-  drawState.drawMode = MODE_PAINTER;  // Default mode is painter
-  drawState.pathMode = PATH_DIAGONAL; // Default path is diagonal
-  drawState.activeTileKey = 0;        // Initialize to a default tile
-  drawState.activeWallKey = 0;        // Initialize to a default wall
+  drawState.drawType = DRAW_TILE;             // Start in tile drawing mode
+  drawState.drawMode = MODE_PAINTER;          // Default mode is painter
+  drawState.pathMode = PATH_DIAGONAL;         // Default path is diagonal
+  drawState.previousPathMode = PATH_DIAGONAL; // Default path is diagonal
+  drawState.activeTileKey = 0;                // Initialize to a default tile
+  drawState.activeWallKey = 0;                // Initialize to a default wall
   drawState.isDrawing = false;
   drawState.drawnTilesCount = 0;
+  drawState.initialDragDirection = (Vector2){0, 0}; // Initialize drag direction
+  drawState.hasCapturedDragDirection = false;       // Initialize capture flag
 
   // Initialize command state
   CommandState commandState = {0};
@@ -179,6 +183,7 @@ int main() {
     }
 
     if (drawState.isDrawing) {
+
       // Box (Shift) mode drawing
       switch (drawState.drawMode) {
       case MODE_BOX: {
@@ -228,6 +233,31 @@ int main() {
         break;
       }
       case MODE_PATHING: {
+        // Check if we're still within the starting tile (32x32 pixels)
+        float deltaX = drawState.mousePos.x - drawState.startPos.x;
+        float deltaY = drawState.mousePos.y - drawState.startPos.y;
+        bool withinStartingTile =
+            (fabsf(deltaX) < TILE_SIZE && fabsf(deltaY) < TILE_SIZE);
+
+        // If we moved back to starting tile, reset capture to allow
+        // recalculation
+        if (withinStartingTile && drawState.hasCapturedDragDirection) {
+          drawState.hasCapturedDragDirection = false;
+          drawState.initialDragDirection = (Vector2){0, 0};
+        }
+
+        // Capture initial drag direction if we haven't yet and we're outside
+        // starting tile
+        if (!drawState.hasCapturedDragDirection && !withinStartingTile) {
+          float dragDistance = sqrt(deltaX * deltaX + deltaY * deltaY);
+
+          // Only capture direction after mouse moves outside the starting tile
+          if (dragDistance >
+              5.0f) { // Small buffer to avoid jitter at tile edge
+            drawState.initialDragDirection = (Vector2){deltaX, deltaY};
+            drawState.hasCapturedDragDirection = true;
+          }
+        }
         switch (drawState.drawType) {
         case DRAW_TILE: {
 
@@ -400,6 +430,7 @@ int main() {
         drawState.isDrawing = false;
         break;
       }
+      drawState.hasCapturedDragDirection = false;
     }
 
     EndMode2D();

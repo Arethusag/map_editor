@@ -4,6 +4,7 @@
 #include "database.h"
 #include "edge.h"
 #include "grid.h"
+#include "math.h"
 #include "wall.h"
 #include <raylib.h>
 #include <sqlite3.h>
@@ -26,16 +27,11 @@ void calculatePath(WorldCoords coords, Array2DPtr pathData,
                    DrawingState *drawState) {
   int dx = coords.endX - coords.startX;
   int dy = coords.endY - coords.startY;
-  int steps = abs(dx) + abs(dy) + 1;
   int count = 0;
   pathData.array[count][0] = coords.startX;
   pathData.array[count][1] = coords.startY;
   count++;
 
-  // This logic is based on a coordinate system where (1,1) is the top-left.
-  // Therefore, a positive dy means moving South (down), and a negative dy
-  // means moving North (up).
-  // Prioritize cardinal directions first.
   if (dx == 0 && dy < 0) {
     drawState->pathQuadrant = QUADRANT_NORTH;
   } else if (dx == 0 && dy > 0) {
@@ -44,9 +40,7 @@ void calculatePath(WorldCoords coords, Array2DPtr pathData,
     drawState->pathQuadrant = QUADRANT_EAST;
   } else if (dy == 0 && dx < 0) {
     drawState->pathQuadrant = QUADRANT_WEST;
-  }
-  // Fallback to diagonal quadrants if not a pure cardinal direction.
-  else if (dx > 0 && dy < 0) {
+  } else if (dx > 0 && dy < 0) {
     drawState->pathQuadrant = QUADRANT_NORTHEAST;
   } else if (dx > 0 && dy > 0) {
     drawState->pathQuadrant = QUADRANT_SOUTHEAST;
@@ -60,9 +54,54 @@ void calculatePath(WorldCoords coords, Array2DPtr pathData,
     drawState->pathMode = PATH_DIAGONAL;
     int stepX = (dx > 0) ? 1 : (dx < 0) ? -1 : 0;
     int stepY = (dy > 0) ? 1 : (dy < 0) ? -1 : 0;
-    for (int i = 0; i <= steps; i++) {
-      pathData.array[i][0] = coords.startX + i / 2 * stepX;
-      pathData.array[i][1] = coords.startY + i / 2 * stepY;
+
+    // Determine priority based on transition from previous path mode
+    bool prioritizeX = true; // default
+
+    if (drawState->previousPathMode == PATH_SHALLOW) {
+      prioritizeX = true;
+      drawState->hasCapturedDragDirection = false;
+    } else if (drawState->previousPathMode == PATH_STEEP) {
+      prioritizeX = false;
+      drawState->hasCapturedDragDirection = false;
+    } else {
+      if (drawState->hasCapturedDragDirection) {
+        prioritizeX = fabsf(drawState->initialDragDirection.x) >
+                      fabsf(drawState->initialDragDirection.y);
+      } else {
+        prioritizeX = true;
+      }
+    }
+
+    int currentX = coords.startX;
+    int currentY = coords.startY;
+
+    for (int i = 0; i < abs(dx); i++) {
+      if (prioritizeX) {
+        drawState->diagonalPriority = PRIORITY_X;
+        // Move X first, then Y
+        currentX += stepX;
+        pathData.array[count][0] = currentX;
+        pathData.array[count][1] = currentY;
+        count++;
+
+        currentY += stepY;
+        pathData.array[count][0] = currentX;
+        pathData.array[count][1] = currentY;
+        count++;
+      } else {
+        drawState->diagonalPriority = PRIORITY_Y;
+        // Move Y first, then X
+        currentY += stepY;
+        pathData.array[count][0] = currentX;
+        pathData.array[count][1] = currentY;
+        count++;
+
+        currentX += stepX;
+        pathData.array[count][0] = currentX;
+        pathData.array[count][1] = currentY;
+        count++;
+      }
     }
   } else if (abs(dx) > abs(dy)) {
     drawState->pathMode = PATH_SHALLOW;
@@ -101,6 +140,10 @@ void calculatePath(WorldCoords coords, Array2DPtr pathData,
       pathData.array[count][1] = bendY + (dy > 0 ? i : -i);
       count++;
     }
+  }
+
+  if (drawState->pathMode != PATH_DIAGONAL) {
+    drawState->previousPathMode = drawState->pathMode;
   }
 }
 

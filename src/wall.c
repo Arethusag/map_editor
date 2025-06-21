@@ -68,8 +68,6 @@ void calculateWallOrientations(DrawingState *drawState, WallOrientMap *map) {
   int srcKey = drawState->activeWallKey;
   int n = drawState->drawnTilesCount;
 
-  fprintf(stderr, "CALC: count=%d, activeWallKey=%d\n", n, srcKey);
-
   if (n <= 0)
     return;
 
@@ -93,12 +91,10 @@ void calculateWallOrientations(DrawingState *drawState, WallOrientMap *map) {
       maxY = y;
   }
 
-  fprintf(stderr, "  bounds: min=(%d,%d) max=(%d,%d)\n", minX, minY, maxX,
-          maxY);
-
   for (int i = 0; i < n; i++) {
     int x = drawState->drawnTiles[i][0];
     int y = drawState->drawnTiles[i][1];
+
     int orient = WALL_STYLE_NONE;
 
     // corner/post/edge logic
@@ -118,7 +114,128 @@ void calculateWallOrientations(DrawingState *drawState, WallOrientMap *map) {
         orient = WALL_STYLE_VERTICAL;
       break;
     case MODE_PATHING:
-      if (x == maxX && y == maxY) {
+      if (drawState->pathMode == PATH_DIAGONAL) {
+        int x0, y0, sx, sy;
+        switch (drawState->pathQuadrant) {
+        case QUADRANT_SOUTHEAST:
+          x0 = minX;
+          y0 = minY;
+          sx = +1;
+          sy = +1;
+          break;
+        case QUADRANT_NORTHEAST:
+          x0 = minX;
+          y0 = maxY;
+          sx = +1;
+          sy = -1;
+          break;
+        case QUADRANT_SOUTHWEST:
+          x0 = maxX;
+          y0 = minY;
+          sx = -1;
+          sy = +1;
+          break;
+        case QUADRANT_NORTHWEST:
+          x0 = maxX;
+          y0 = maxY;
+          sx = -1;
+          sy = -1;
+          break;
+        default:
+          x0 = minX;
+          y0 = minY;
+          sx = +1;
+          sy = +1;
+          break;
+        }
+
+        int dx = sx * (x - x0);
+        int dy = sy * (y - y0);
+        int len = (maxX - minX < maxY - minY) ? (maxX - minX) : (maxY - minY);
+
+        bool onDiag = (dx == dy && dx >= 0 && dx <= len);
+        bool isStart = (dx == 0 && dy == 0);
+        bool isEnd = (dx == len && dy == len);
+
+        switch (drawState->pathQuadrant) {
+        case QUADRANT_SOUTHEAST:
+          if (isStart) {
+            orient = WALL_STYLE_POST;
+          } else if (isEnd) {
+            orient = (drawState->diagonalPriority == PRIORITY_X)
+                         ? WALL_STYLE_VERTICAL
+                         : WALL_STYLE_HORIZONTAL;
+          } else if (onDiag) {
+            orient = (drawState->diagonalPriority == PRIORITY_X)
+                         ? WALL_STYLE_VERTICAL
+                         : WALL_STYLE_HORIZONTAL;
+          } else {
+            orient = (drawState->diagonalPriority == PRIORITY_X)
+                         ? WALL_STYLE_HORIZONTAL
+                         : WALL_STYLE_VERTICAL;
+          }
+          break;
+        case QUADRANT_NORTHEAST:
+          if (isStart) {
+            orient = (drawState->diagonalPriority == PRIORITY_X)
+                         ? WALL_STYLE_POST
+                         : WALL_STYLE_VERTICAL;
+          } else if (isEnd) {
+            orient = (drawState->diagonalPriority == PRIORITY_X)
+                         ? WALL_STYLE_POST
+                         : WALL_STYLE_HORIZONTAL;
+          } else if (onDiag) {
+            orient = (drawState->diagonalPriority == PRIORITY_X)
+                         ? WALL_STYLE_POST
+                         : WALL_STYLE_CORNER;
+          } else {
+            orient = (drawState->diagonalPriority == PRIORITY_X)
+                         ? WALL_STYLE_CORNER
+                         : WALL_STYLE_POST;
+          }
+          break;
+        case QUADRANT_SOUTHWEST:
+          if (isStart) {
+            orient = (drawState->diagonalPriority == PRIORITY_Y)
+                         ? WALL_STYLE_POST
+                         : WALL_STYLE_HORIZONTAL;
+          } else if (isEnd) {
+            orient = (drawState->diagonalPriority == PRIORITY_Y)
+                         ? WALL_STYLE_POST
+                         : WALL_STYLE_VERTICAL;
+          } else if (onDiag) {
+            orient = (drawState->diagonalPriority == PRIORITY_Y)
+                         ? WALL_STYLE_POST
+                         : WALL_STYLE_CORNER;
+          } else {
+            orient = (drawState->diagonalPriority == PRIORITY_Y)
+                         ? WALL_STYLE_CORNER
+                         : WALL_STYLE_POST;
+          }
+          break;
+        case QUADRANT_NORTHWEST:
+          if (isStart) {
+            orient = (drawState->diagonalPriority == PRIORITY_Y)
+                         ? WALL_STYLE_VERTICAL
+                         : WALL_STYLE_HORIZONTAL;
+          } else if (isEnd) {
+            orient = WALL_STYLE_POST;
+          } else if (onDiag) {
+            orient = (drawState->diagonalPriority == PRIORITY_Y)
+                         ? WALL_STYLE_VERTICAL
+                         : WALL_STYLE_HORIZONTAL;
+          } else {
+            orient = (drawState->diagonalPriority == PRIORITY_Y)
+                         ? WALL_STYLE_HORIZONTAL
+                         : WALL_STYLE_VERTICAL;
+          }
+          break;
+        default:
+          orient = WALL_STYLE_POST;
+          break;
+        }
+
+      } else if (x == maxX && y == maxY) {
         if (drawState->pathQuadrant == QUADRANT_SOUTHEAST &&
             drawState->pathMode == PATH_STEEP) {
           orient = WALL_STYLE_HORIZONTAL;
@@ -189,9 +306,6 @@ void calculateWallOrientations(DrawingState *drawState, WallOrientMap *map) {
       break;
     }
 
-    // debug
-    fprintf(stderr, "  tile %2d: (%2d,%2d) => orient=%d ", i, x, y, orient);
-
     // hash lookup
     unsigned idx = ((unsigned)srcKey ^ ((unsigned)orient << 1)) % map->capacity;
     Entry *e = map->buckets[idx];
@@ -204,8 +318,6 @@ void calculateWallOrientations(DrawingState *drawState, WallOrientMap *map) {
       }
       e = e->next;
     }
-
-    fprintf(stderr, "-> idx=%u, target=%d\n", idx, target);
 
     drawState->drawnTiles[i][2] = target;
   }

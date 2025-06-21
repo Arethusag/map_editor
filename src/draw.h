@@ -49,18 +49,23 @@ typedef enum {
   QUADRANT_WEST
 } PathQuadrant;
 
+typedef enum { PRIORITY_X, PRIORITY_Y } DiagonalPriority;
+
 // The drawing state structure that groups all drawing variables
 typedef struct {
   DrawType drawType;         // tile or wall drawing
   DrawMode drawMode;         // painter, pathing, or box mode
   PathMode pathMode;         // diagonal, shallow, or steep
+  PathMode previousPathMode; // context for when patmode is switched
   PathQuadrant pathQuadrant; // diagonal or cardinal path directions
   int activeTileKey;         // currently selected tile key (for tile drawing)
   int activeWallKey;         // currently selected wall key (for wall drawing)
   Vector2 startPos; // starting mouse position for drawing (in world coords)
   Vector2 mousePos; // current mouse position (in world coords)
   bool isDrawing;   // flag to signal an active drawing operation
-
+  Vector2 initialDragDirection;
+  bool hasCapturedDragDirection;
+  DiagonalPriority diagonalPriority;
   // Include a preview buffer for drawn tiles (or walls)
   // Using a 2D array where each entry holds {x, y, style}
   int drawnTiles[GRID_SIZE * GRID_SIZE][3];
